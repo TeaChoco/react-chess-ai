@@ -5,6 +5,8 @@ import useChess from '../hooks/useChess';
 import { useCallback, useEffect, useState } from 'react';
 import useStockfish, { type Difficulty } from '../hooks/useStockfish';
 
+type GameMode = 'ai' | 'two-player';
+
 export default function ChessGame() {
     const {
         gameState,
@@ -16,6 +18,7 @@ export default function ChessGame() {
     } = useChess();
     const { isReady, isThinking, difficulty, setDifficulty, getBestMove } =
         useStockfish();
+    const [gameMode, setGameMode] = useState<GameMode>('ai');
     const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>(
         'white',
     );
@@ -24,22 +27,26 @@ export default function ChessGame() {
         Record<string, React.CSSProperties>
     >({});
 
-    // AI makes move when it's black's turn
+    const isAiMode = gameMode === 'ai';
+
+    // AI makes move when it's black's turn (only in AI mode)
     useEffect(() => {
         if (
+            isAiMode &&
             gameState.turn === 'b' &&
             !gameState.isGameOver &&
             isReady &&
             !isThinking
         ) {
             const timer = setTimeout(() => {
-                getBestMove(gameState.fen, (bestMove) => {
-                    makeMoveFromUci(bestMove);
-                });
+                getBestMove(gameState.fen, (bestMove) =>
+                    makeMoveFromUci(bestMove),
+                );
             }, 500);
             return () => clearTimeout(timer);
         }
     }, [
+        isAiMode,
         gameState.turn,
         gameState.fen,
         gameState.isGameOver,
@@ -49,9 +56,15 @@ export default function ChessGame() {
         makeMoveFromUci,
     ]);
 
+    const canPlayerMove = useCallback(() => {
+        if (gameState.isGameOver) return false;
+        if (!isAiMode) return true; // Two-player mode: both can move
+        return gameState.turn === 'w'; // AI mode: only white can move
+    }, [gameState.isGameOver, gameState.turn, isAiMode]);
+
     const onSquareClick = useCallback(
         ({ square }: SquareHandlerArgs) => {
-            if (gameState.turn !== 'w' || gameState.isGameOver) return;
+            if (!canPlayerMove()) return;
 
             if (selectedSquare) {
                 const success = makeMove(selectedSquare as any, square as any);
@@ -80,25 +93,24 @@ export default function ChessGame() {
                 setOptionSquares({});
             }
         },
-        [
-            selectedSquare,
-            gameState.turn,
-            gameState.isGameOver,
-            makeMove,
-            getLegalMoves,
-        ],
+        [selectedSquare, canPlayerMove, makeMove, getLegalMoves],
     );
 
     const onPieceDrop = useCallback(
         ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
-            if (gameState.turn !== 'w' || gameState.isGameOver) return false;
+            if (!canPlayerMove()) return false;
             const success = makeMove(sourceSquare as any, targetSquare as any);
             setSelectedSquare(null);
             setOptionSquares({});
             return success;
         },
-        [gameState.turn, gameState.isGameOver, makeMove],
+        [canPlayerMove, makeMove],
     );
+
+    const handleModeChange = (mode: GameMode) => {
+        setGameMode(mode);
+        resetGame();
+    };
 
     const getStatusText = () => {
         if (gameState.isCheckmate)
@@ -111,10 +123,14 @@ export default function ChessGame() {
             return gameState.turn === 'w'
                 ? '⚠️ White is in check!'
                 : '⚠️ Black is in check!';
-        if (isThinking) return '🤔 AI is thinking...';
-        return gameState.turn === 'w'
-            ? '⚪ Your turn (White)'
-            : '⚫ AI is playing (Black)';
+        if (isAiMode && isThinking) return '🤔 AI is thinking...';
+
+        if (isAiMode) {
+            return gameState.turn === 'w'
+                ? '⚪ Your turn (White)'
+                : '⚫ AI is playing (Black)';
+        }
+        return gameState.turn === 'w' ? "⚪ White's turn" : "⚫ Black's turn";
     };
 
     return (
@@ -139,14 +155,47 @@ export default function ChessGame() {
                         {getStatusText()}
                     </div>
 
-                    {/* Difficulty */}
+                    {/* Game Mode */}
                     <div className="mb-4">
                         <label className="text-sm text-muted-foreground mb-2 block">
-                            AI Difficulty
+                            Game Mode
                         </label>
                         <div className="flex gap-2">
-                            {(['easy', 'medium', 'hard'] as Difficulty[]).map(
-                                (d) => (
+                            <button
+                                onClick={() => handleModeChange('ai')}
+                                disabled={isThinking}
+                                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                                    gameMode === 'ai'
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'bg-muted text-muted-foreground hover:bg-secondary'
+                                } disabled:opacity-50`}
+                            >
+                                🤖 vs AI
+                            </button>
+                            <button
+                                onClick={() => handleModeChange('two-player')}
+                                disabled={isThinking}
+                                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                                    gameMode === 'two-player'
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'bg-muted text-muted-foreground hover:bg-secondary'
+                                } disabled:opacity-50`}
+                            >
+                                👥 2 Players
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Difficulty - Only show in AI mode */}
+                    {isAiMode && (
+                        <div className="mb-4">
+                            <label className="text-sm text-muted-foreground mb-2 block">
+                                AI Difficulty
+                            </label>
+                            <div className="flex gap-2">
+                                {(
+                                    ['easy', 'medium', 'hard'] as Difficulty[]
+                                ).map((d) => (
                                     <button
                                         key={d}
                                         onClick={() => setDifficulty(d)}
@@ -159,10 +208,10 @@ export default function ChessGame() {
                                     >
                                         {d.charAt(0).toUpperCase() + d.slice(1)}
                                     </button>
-                                ),
-                            )}
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Controls */}
                     <div className="flex flex-col gap-2">
@@ -175,7 +224,8 @@ export default function ChessGame() {
                         <button
                             onClick={undoMove}
                             disabled={
-                                gameState.history.length < 2 || isThinking
+                                gameState.history.length < (isAiMode ? 2 : 1) ||
+                                isThinking
                             }
                             className="w-full py-2.5 px-4 bg-secondary text-secondary-foreground rounded-xl font-medium hover:opacity-90 transition-all disabled:opacity-50 cursor-pointer"
                         >
