@@ -1,0 +1,56 @@
+/* Path: "client/src/index.css" */
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    /* Light theme colors */
+    --color-background: #ffffff;
+    --color-foreground: #0f172a;
+    --color-card: #f8fafc;
+    --color-card-foreground: #1e293b;
+    --color-primary: #3b82f6;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #e2e8f0;
+    --color-secondary-foreground: #334155;
+    --color-muted: #f1f5f9;
+    --color-muted-foreground: #64748b;
+    --color-border: #e2e8f0;
+}
+
+:root {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dark theme overrides */
+.dark {
+    --color-background: #0f172a;
+    --color-foreground: #f8fafc;
+    --color-card: #1e293b;
+    --color-card-foreground: #f1f5f9;
+    --color-primary: #60a5fa;
+    --color-primary-foreground: #0f172a;
+    --color-secondary: #334155;
+    --color-secondary-foreground: #e2e8f0;
+    --color-muted: #1e293b;
+    --color-muted-foreground: #94a3b8;
+    --color-border: #334155;
+}
+
+a,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+button {
+    transition: color 0.3s ease;
+}
