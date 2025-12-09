@@ -35,11 +35,9 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: 20
-                  cache: 'pnpm'
-                  cache-dependency-path: './client/pnpm-lock.yaml'
 
             - name: Install dependencies
-              run: pnpm install
+              run: pnpm install --no-frozen-lockfile
 
             - name: Copy Stockfish files
               run: |
