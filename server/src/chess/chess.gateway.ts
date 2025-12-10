@@ -280,7 +280,8 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         } else return; // Not seated
 
         // Reset game
-        client.emit('reset-game');
+        room.fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        this.server.to(roomId).emit('reset-game');
 
         // Add back to spectators
         room.spectators.push(player);
@@ -355,6 +356,7 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
             if (wasSeated) {
                 room.fen =
                     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+                this.server.to(roomId).emit('reset-game');
             }
 
             if (
