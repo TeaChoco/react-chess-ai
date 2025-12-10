@@ -1,7 +1,9 @@
+// -Path: "client/src/components/ChessGame.tsx"
 import ThemeToggle from './ThemeToggle';
 import { Chessboard } from 'react-chessboard';
 import type { Color, Square } from 'chess.js';
 import useStockfish from '../hooks/useStockfish';
+import Chessboard3D from './3d/Chessboard3D';
 import useChess, { toColor } from '../hooks/useChess';
 import type { AIConfig, GameConfig } from '../types/game';
 import useSocket, { type RoomData } from '../hooks/useSocket';
@@ -46,6 +48,7 @@ export default function ChessGame({
         from: string;
         to: string;
     } | null>(null);
+    const [is3D, setIs3D] = useState(false);
 
     const isOnline = config.mode === 'online';
     const roomData = socket?.roomData;
@@ -400,6 +403,12 @@ export default function ChessGame({
         return styles;
     }, [optionSquares, premove]);
 
+    // Get legal moves for selected square (for 3D board)
+    const legalMovesForSelected = useMemo(() => {
+        if (!selectedSquare) return [];
+        return getLegalMoves(selectedSquare as Square);
+    }, [selectedSquare, getLegalMoves]);
+
     const hasAI = config.white === 'ai' || config.black === 'ai';
 
     const getStatusText = () => {
@@ -644,6 +653,12 @@ export default function ChessGame({
                         >
                             🔃 Flip Board
                         </button>
+                        <button
+                            onClick={() => setIs3D((v) => !v)}
+                            className="w-full mt-2 py-2 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer"
+                        >
+                            {is3D ? '🎮 Switch to 2D' : '🎲 Switch to 3D'}
+                        </button>
                     </div>
 
                     {/* Error Display */}
@@ -706,28 +721,50 @@ export default function ChessGame({
 
                     <div className="bg-card border border-border rounded-2xl p-2 md:p-4 shadow-lg flex justify-center items-center">
                         <div className="w-full max-w-[85vw] md:max-w-[600px] lg:max-w-[70vh] aspect-square">
-                            <Chessboard
-                                options={{
-                                    position: gameState.fen,
-                                    onPieceDrop: onPieceDrop,
-                                    onSquareClick: onSquareClick,
-                                    onMouseOutSquare: onMouseOutSquare,
-                                    onMouseOverSquare: onMouseOverSquare,
-                                    squareStyles: customSquareStyles,
-                                    boardOrientation: toColor(boardOrientation),
-                                    boardStyle: {
-                                        borderRadius: '8px',
-                                        boxShadow:
-                                            '0 4px 20px rgba(0, 0, 0, 0.15)',
-                                    },
-                                    darkSquareStyle: {
-                                        backgroundColor: 'gray',
-                                    },
-                                    lightSquareStyle: {
-                                        backgroundColor: 'white',
-                                    },
-                                }}
-                            />
+                            {is3D ? (
+                                <Chessboard3D
+                                    position={gameState.fen}
+                                    boardOrientation={toColor(boardOrientation)}
+                                    selectedSquare={selectedSquare}
+                                    legalMoves={legalMovesForSelected}
+                                    premove={premove}
+                                    onSquareClick={(square) => {
+                                        const piece = game.get(square as any);
+                                        onSquareClick({
+                                            square,
+                                            piece: piece
+                                                ? `${
+                                                      piece.color
+                                                  }${piece.type.toUpperCase()}`
+                                                : undefined,
+                                        } as any);
+                                    }}
+                                />
+                            ) : (
+                                <Chessboard
+                                    options={{
+                                        position: gameState.fen,
+                                        onPieceDrop: onPieceDrop,
+                                        onSquareClick: onSquareClick,
+                                        onMouseOutSquare: onMouseOutSquare,
+                                        onMouseOverSquare: onMouseOverSquare,
+                                        squareStyles: customSquareStyles,
+                                        boardOrientation:
+                                            toColor(boardOrientation),
+                                        boardStyle: {
+                                            borderRadius: '8px',
+                                            boxShadow:
+                                                '0 4px 20px rgba(0, 0, 0, 0.15)',
+                                        },
+                                        darkSquareStyle: {
+                                            backgroundColor: 'gray',
+                                        },
+                                        lightSquareStyle: {
+                                            backgroundColor: 'white',
+                                        },
+                                    }}
+                                />
+                            )}
                         </div>
                     </div>
 
