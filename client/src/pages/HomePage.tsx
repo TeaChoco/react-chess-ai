@@ -1,6 +1,6 @@
 // Path: "client/src/pages/HomePage.tsx"
-import { useMemo } from 'react';
 import { useSetAtom } from 'jotai';
+import { useEffect, useMemo } from 'react';
 import useSocket from '../hooks/useSocket';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/ThemeToggle';
@@ -12,8 +12,6 @@ export default function HomePage() {
     const socket = useSocket();
     const navigate = useNavigate();
     const setGameConfig = useSetAtom(gameConfigAtom);
-
-    // Persisted State
     const [roomId, setRoomId] = useLocalStorage<string>('chess_roomId', '');
     const [isPrivate, setIsPrivate] = useLocalStorage<boolean>(
         'chess_isPrivate',
@@ -36,18 +34,22 @@ export default function HomePage() {
         'chess_hostColor',
         'white',
     );
+    const [playerName, setPlayerName] = useLocalStorage<string>(
+        'chess_playerName',
+        'Guest',
+    );
 
     const hasAI = useMemo(
         () => white === 'ai' || black === 'ai',
         [white, black],
     );
 
-    useMemo(() => {
+    useEffect(() => {
         if (mode === 'online') {
             socket.connect();
             socket.getRooms();
         } else {
-            socket.disconnect();
+            // Don't disconnect here to allow navigation
         }
     }, [mode]);
 
@@ -69,8 +71,13 @@ export default function HomePage() {
             aiConfig: { skillLevel: 10, depth: 10 },
             playerColor: hostColor,
         });
-        socket.createRoom(hostColor, !isPrivate);
-        navigate('/play?create=true&color=' + hostColor);
+        const queryParams = new URLSearchParams({
+            create: 'true',
+            color: hostColor,
+            name: playerName,
+        });
+        if (isPrivate) queryParams.append('private', 'true');
+        navigate('/play?' + queryParams.toString());
     };
 
     const joinRoom = (id?: string) => {
@@ -84,7 +91,11 @@ export default function HomePage() {
             roomId: targetId.trim(),
             aiConfig: { skillLevel: 10, depth: 10 },
         });
-        navigate('/play?room=' + targetId.trim());
+        const queryParams = new URLSearchParams({
+            room: targetId.trim(),
+            name: playerName,
+        });
+        navigate('/play?' + queryParams.toString());
     };
 
     return (
@@ -131,6 +142,21 @@ export default function HomePage() {
                             🌐 Online
                         </button>
                     </div>
+
+                    {mode === 'online' && (
+                        <div className="mb-4">
+                            <label className="text-sm text-muted-foreground mb-2 block">
+                                Your Name
+                            </label>
+                            <input
+                                type="text"
+                                value={playerName}
+                                onChange={(e) => setPlayerName(e.target.value)}
+                                placeholder="Enter your name"
+                                className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                        </div>
+                    )}
 
                     {mode === 'local' ? (
                         <>
@@ -364,13 +390,20 @@ export default function HomePage() {
                                                             Players
                                                         </div>
                                                     </div>
+
                                                     <button
                                                         onClick={() =>
                                                             joinRoom(room.id)
                                                         }
-                                                        className="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg hover:bg-primary/20 transition-all cursor-pointer"
+                                                        className={`px-3 py-1.5 ${
+                                                            room.players === 2
+                                                                ? 'bg-secondary text-secondary-foreground'
+                                                                : 'bg-primary/10 text-primary'
+                                                        } text-sm font-medium rounded-lg hover:opacity-80 transition-all cursor-pointer`}
                                                     >
-                                                        Join
+                                                        {room.players === 2
+                                                            ? 'Watch'
+                                                            : 'Join'}
                                                     </button>
                                                 </div>
                                             ))}

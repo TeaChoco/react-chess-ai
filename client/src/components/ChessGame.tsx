@@ -4,12 +4,13 @@ import useChess from '../hooks/useChess';
 import { Chessboard } from 'react-chessboard';
 import type { GameConfig } from '../types/game';
 import useStockfish from '../hooks/useStockfish';
+import type { UseSocket } from '../hooks/useSocket';
 import { useCallback, useEffect, useState } from 'react';
 import type { PieceDropHandlerArgs, SquareHandlerArgs } from 'react-chessboard';
 
 interface ChessGameProps {
     config: GameConfig;
-    socket?: ReturnType<typeof import('../hooks/useSocket').default>;
+    socket?: UseSocket;
 }
 
 export default function ChessGame({ config, socket }: ChessGameProps) {
@@ -35,7 +36,7 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
 
     const isOnline = config.mode === 'online';
     const playerColor = isOnline
-        ? socket?.roomData?.playerColor || 'white'
+        ? socket?.roomData?.color || 'white'
         : config.playerColor || 'white';
 
     // Determine if current turn is AI
@@ -50,20 +51,28 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
     const canPlayerMove = useCallback(() => {
         if (gameState.isGameOver) return false;
         if (isOnline) {
+            if (socket?.roomData?.isSpectator) return false;
             return (
                 (gameState.turn === 'w' && playerColor === 'white') ||
                 (gameState.turn === 'b' && playerColor === 'black')
             );
         }
         return !isAiTurn();
-    }, [gameState.isGameOver, gameState.turn, isOnline, playerColor, isAiTurn]);
+    }, [
+        gameState.isGameOver,
+        gameState.turn,
+        isOnline,
+        playerColor,
+        isAiTurn,
+        socket?.roomData?.isSpectator,
+    ]);
 
     // Update board orientation when player color changes (for online play)
     useEffect(() => {
-        if (isOnline && socket?.roomData?.playerColor) {
-            setBoardOrientation(socket.roomData.playerColor);
+        if (isOnline && socket?.roomData?.color) {
+            setBoardOrientation(socket.roomData.color);
         }
-    }, [isOnline, socket?.roomData?.playerColor]);
+    }, [isOnline, socket?.roomData?.color]);
 
     // AI makes move
     useEffect(() => {
@@ -167,6 +176,11 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         if (isThinking) return '🤔 AI is thinking...';
 
         if (isOnline) {
+            if (socket?.roomData?.isSpectator) {
+                return gameState.turn === 'w'
+                    ? "Spectating: White's turn"
+                    : "Spectating: Black's turn";
+            }
             const isYourTurn =
                 (gameState.turn === 'w' && playerColor === 'white') ||
                 (gameState.turn === 'b' && playerColor === 'black');
@@ -176,6 +190,21 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         return gameState.turn === 'w'
             ? `⚪ ${config.white === 'ai' ? 'AI' : 'White'}'s turn`
             : `⚫ ${config.black === 'ai' ? 'AI' : 'Black'}'s turn`;
+    };
+
+    const getPlayerName = (color: 'white' | 'black') => {
+        if (!isOnline || !socket?.roomData?.players) {
+            const type = config[color];
+            return type === 'ai'
+                ? '🤖 AI'
+                : color === 'white'
+                ? '⚪ Player'
+                : '⚫ Player';
+        }
+        const player = socket.roomData.players.find((p) => p.color === color);
+        return player
+            ? (color === 'white' ? '⚪ ' : '⚫ ') + player.name
+            : 'Waiting...';
     };
 
     return (
@@ -192,7 +221,7 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
 
                     {/* Online Room ID */}
                     {isOnline && socket?.roomData && (
-                        <div className="mb-4 p-4 bg-gradient-to-r from-primary/20 to-purple-500/20 rounded-xl border border-primary/30">
+                        <div className="mb-4 p-4 bg-linear-to-r from-primary/20 to-purple-500/20 rounded-xl border border-primary/30">
                             <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">
                                 Room ID
                             </div>
@@ -322,7 +351,16 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
             </div>
 
             {/* Center - Chessboard */}
-            <div className="order-1 lg:order-2">
+            <div className="order-1 lg:order-2 flex flex-col gap-4">
+                {/* Top Player (Black if we turn board is white, else White) */}
+                <div className="bg-card/50 px-4 py-2 rounded-xl flex items-center gap-2 border border-border">
+                    <div className="font-medium text-foreground">
+                        {getPlayerName(
+                            boardOrientation === 'white' ? 'black' : 'white',
+                        )}
+                    </div>
+                </div>
+
                 <div className="bg-card border border-border rounded-2xl p-4 shadow-lg">
                     <div className="w-[min(80vw,480px)] aspect-square">
                         <Chessboard
@@ -345,6 +383,18 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                             }}
                         />
                     </div>
+                </div>
+
+                {/* Bottom Player (You/White) */}
+                <div className="bg-card/50 px-4 py-2 rounded-xl flex items-center justify-between border border-border">
+                    <div className="font-medium text-foreground">
+                        {getPlayerName(boardOrientation)}
+                    </div>
+                    {socket?.roomData?.isSpectator && (
+                        <div className="text-xs px-2 py-1 bg-primary/20 text-primary rounded-lg font-bold uppercase tracking-wider">
+                            Spectating
+                        </div>
+                    )}
                 </div>
             </div>
 

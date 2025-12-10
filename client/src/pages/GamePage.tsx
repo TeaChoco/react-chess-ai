@@ -30,21 +30,18 @@ export default function GamePage() {
         const roomId = searchParams.get('room');
         const color =
             (searchParams.get('color') as 'white' | 'black') || 'white';
+        const name = searchParams.get('name') || 'Guest';
 
         if (createRoom) {
-            socket.createRoom(color);
+            const isPrivate = searchParams.get('private') === 'true';
+            socket.createRoom(color, !isPrivate, name);
             setWaitingForOpponent(true);
         } else if (roomId) {
-            socket.joinRoom(roomId);
+            socket.joinRoom(roomId, name);
         }
+        socket.onOpponentJoined(() => setWaitingForOpponent(false));
 
-        socket.onOpponentJoined(() => {
-            setWaitingForOpponent(false);
-        });
-
-        socket.onOpponentLeft(() => {
-            setWaitingForOpponent(true);
-        });
+        socket.onOpponentLeft(() => setWaitingForOpponent(true));
 
         return () => {
             socket.leaveRoom();
@@ -80,11 +77,17 @@ export default function GamePage() {
                     <p className="text-sm text-muted-foreground mb-4">
                         You are playing as{' '}
                         <span className="font-medium">
-                            {socket.roomData.playerColor === 'white'
+                            {socket.roomData.color === 'white'
                                 ? '⚪ White'
                                 : '⚫ Black'}
                         </span>
                     </p>
+                    <div className="text-sm text-muted-foreground mb-4">
+                        joined as{' '}
+                        <span className="font-medium text-foreground">
+                            {searchParams.get('name')}
+                        </span>
+                    </div>
                     <button
                         onClick={handleBack}
                         className="py-2.5 px-6 bg-secondary text-secondary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer"

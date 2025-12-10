@@ -10,9 +10,21 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
+interface Player {
+    id: string;
+    color: 'white' | 'black';
+    name: string;
+}
+
+interface Spectator {
+    id: string;
+    name: string;
+}
+
 interface Room {
     id: string;
-    players: Map<string, 'white' | 'black'>;
+    players: Map<string, Player>;
+    spectators: Spectator[];
     fen: string;
     isPublic: boolean;
 }
@@ -77,8 +89,10 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @SubscribeMessage('create-room')
     handleCreateRoom(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { color: 'white' | 'black'; isPublic?: boolean },
+        @MessageBody()
+        data: { color: 'white' | 'black'; isPublic?: boolean; name: string },
     ) {
+        console.log(`Received create-room from ${client.id}:`, data);
         let roomId = this.generateRoomId();
         while (this.rooms.has(roomId)) {
             roomId = this.generateRoomId();
@@ -86,7 +100,13 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         const room: Room = {
             id: roomId,
-            players: new Map([[client.id, data.color]]),
+            players: new Map([
+                [
+                    client.id,
+                    { id: client.id, color: data.color, name: data.name },
+                ],
+            ]),
+            spectators: [],
             fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             isPublic: data.isPublic ?? true,
         };
@@ -95,15 +115,21 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.playerRooms.set(client.id, roomId);
         client.join(roomId);
 
-        client.emit('room-created', { roomId, color: data.color });
+        client.emit('room-created', {
+            roomId,
+            color: data.color,
+            fen: room.fen,
+        });
         this.broadcastRoomsList();
-        console.log(`Room created: ${roomId} by ${client.id} as ${data.color}`);
+        console.log(
+            `Room created: ${roomId} by ${data.name} (${client.id}) as ${data.color}`,
+        );
     }
 
     @SubscribeMessage('join-room')
     handleJoinRoom(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { roomId: string },
+        @MessageBody() data: { roomId: string; name: string },
     ) {
         const room = this.rooms.get(data.roomId);
 
@@ -112,24 +138,49 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
             return;
         }
 
-        if (room.players.size >= 2) {
-            client.emit('error', 'Room is full');
-            return;
-        }
-
-        const existingColor = Array.from(room.players.values())[0];
-        const playerColor = existingColor === 'white' ? 'black' : 'white';
-
-        room.players.set(client.id, playerColor);
         this.playerRooms.set(client.id, data.roomId);
         client.join(data.roomId);
 
-        client.emit('room-joined', { roomId: data.roomId, color: playerColor });
-        client.to(data.roomId).emit('opponent-joined');
+        // Join as Spectator if full
+        if (room.players.size >= 2) {
+            room.spectators.push({ id: client.id, name: data.name });
+            client.emit('room-joined', {
+                roomId: data.roomId,
+                color: null, // Spectator
+                fen: room.fen,
+                isSpectator: true,
+                players: Array.from(room.players.values()),
+            });
+            console.log(
+                `Spectator ${data.name} (${client.id}) joined room ${data.roomId}`,
+            );
+            return;
+        }
+
+        // Join as Player
+        const existingPlayer = Array.from(room.players.values())[0];
+        const playerColor =
+            existingPlayer.color === 'white' ? 'black' : 'white';
+
+        room.players.set(client.id, {
+            id: client.id,
+            color: playerColor,
+            name: data.name,
+        });
+
+        client.emit('room-joined', {
+            roomId: data.roomId,
+            color: playerColor,
+            fen: room.fen,
+            players: Array.from(room.players.values()),
+        });
+        client.to(data.roomId).emit('opponent-joined', {
+            name: data.name,
+        });
         this.broadcastRoomsList();
 
         console.log(
-            `Player ${client.id} joined room ${data.roomId} as ${playerColor}`,
+            `Player ${data.name} (${client.id}) joined room ${data.roomId} as ${playerColor}`,
         );
     }
 
@@ -141,8 +192,42 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const roomId = this.playerRooms.get(client.id);
         if (!roomId) return;
 
+        const room = this.rooms.get(roomId);
+        if (!room) return;
+
+        // Verify player is part of the game (not spectator)
+        if (!room.players.has(client.id)) {
+            return;
+        }
+
         client.to(roomId).emit('move', move);
+        // Update room FEN (simplified, ideally validate move with chess logic)
+        // For now relying on client to send valid moves, but we should track state
+        // We really should be validating here, but keeping it simple as per current architecture
         console.log(`Move in room ${roomId}: ${move.from} -> ${move.to}`);
+
+        // Also update FEN in our simple store if we were tracking it properly
+        // For spectators to get sync, we need to update the FEN.
+        // Since we don't have chess logic here, we'll blindly trust the move updates the state on clients.
+        // A better way is if the client sends the new FEN. Let's assume for now we just relay.
+        // Actually, to support late spectator join, we need the FEN.
+        // Let's ask client to send FEN or handle it.
+        // UPDATE: Client sends 'fen' update event? Or we just broadcast 'move'.
+        // Spectators joining late need the CURRENT FEN.
+        // Let's add a `update-fen` message or include FEN in move?
+    }
+
+    @SubscribeMessage('update-fen')
+    handleUpdateFen(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { fen: string },
+    ) {
+        const roomId = this.playerRooms.get(client.id);
+        if (!roomId) return;
+        const room = this.rooms.get(roomId);
+        if (room && room.players.has(client.id)) {
+            room.fen = data.fen;
+        }
     }
 
     @SubscribeMessage('leave-room')
@@ -152,19 +237,26 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         const room = this.rooms.get(roomId);
         if (room) {
-            room.players.delete(client.id);
-            client.to(roomId).emit('opponent-left');
+            if (room.players.has(client.id)) {
+                room.players.delete(client.id);
+                client.to(roomId).emit('opponent-left');
+                this.broadcastRoomsList();
+            } else {
+                // Remove spectator
+                room.spectators = room.spectators.filter(
+                    (s) => s.id !== client.id,
+                );
+            }
 
-            if (room.players.size === 0) {
+            if (room.players.size === 0 && room.spectators.length === 0) {
                 this.rooms.delete(roomId);
                 console.log(`Room ${roomId} deleted (empty)`);
             }
-            this.broadcastRoomsList();
         }
 
         client.leave(roomId);
         this.playerRooms.delete(client.id);
-        console.log(`Player ${client.id} left room ${roomId}`);
+        console.log(`User ${client.id} left room ${roomId}`);
     }
     @SubscribeMessage('get-rooms')
     handleGetRooms(@ConnectedSocket() client: Socket) {
