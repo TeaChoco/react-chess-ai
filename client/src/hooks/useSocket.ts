@@ -53,6 +53,8 @@ export default function useSocket() {
     const [socketId, setSocketId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
+        console.log('server url: ', SERVER_URL);
+
         const socket = io(SERVER_URL, {
             transports: ['websocket'],
             autoConnect: false,
