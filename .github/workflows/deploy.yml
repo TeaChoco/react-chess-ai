@@ -47,7 +47,7 @@ jobs:
 
             - name: Build
               env:
-                  VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+                  VITE_SERVER_URL: https://react-chess-ai.onrender.com
               run: pnpm run build
 
             - name: Setup Pages
