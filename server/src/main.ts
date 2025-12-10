@@ -7,9 +7,7 @@ async function bootstrap() {
         origin: '*',
         credentials: true,
     });
-    await app.listen(process.env.PORT ?? 3000);
-    console.log(
-        `Server running on http://localhost:${process.env.PORT ?? 3000}`,
-    );
+    await app.listen(process.env.PORT ?? 3000, process.env.HOST ?? '0.0.0.0');
+    console.log(`Server running on ${await app.getUrl()}`);
 }
 bootstrap();
