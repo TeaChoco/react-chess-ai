@@ -1,6 +1,5 @@
 // Path: "client/src/pages/HomePage.tsx"
 import { useSetAtom } from 'jotai';
-
 import { useEffect, useMemo } from 'react';
 import useSocket from '../hooks/useSocket';
 import { useNavigate } from 'react-router-dom';
@@ -95,236 +94,277 @@ export default function HomePage() {
     };
 
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="min-h-screen bg-linear-to-br from-background via-muted/80 to-background flex items-center justify-center p-4">
             <div className="absolute top-4 right-4">
                 <ThemeToggle />
             </div>
 
-            <div className="w-full max-w-md">
-                {/* Title */}
-                <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-foreground mb-2">
-                        ♟️ Chess Game
-                    </h1>
-                    <p className="text-muted-foreground">
-                        Play against AI or friends
-                    </p>
+            <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+                {/* Left Side - Hero (Desktop) */}
+                <div className="text-center lg:text-left space-y-6">
+                    <div className="inline-block p-4 bg-primary/10 rounded-3xl mb-2 animate-in fade-in zoom-in duration-500">
+                        <span className="text-6xl lg:text-8xl filter drop-shadow-lg">
+                            ♟️
+                        </span>
+                    </div>
+                    <div>
+                        <h1 className="text-4xl lg:text-6xl font-black text-foreground tracking-tight mb-4">
+                            Master the <br className="hidden lg:block" />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600">
+                                Game of Kings
+                            </span>
+                        </h1>
+                        <p className="text-lg text-muted-foreground max-w-md mx-auto lg:mx-0 leading-relaxed">
+                            Play locally against AI or challenge friends online
+                            in real-time. Experience chess like never before.
+                        </p>
+                    </div>
+
+                    {/* Stats or Features Chips (Optional decoration) */}
+                    <div className="flex flex-wrap gap-3 justify-center lg:justify-start pt-2">
+                        <div className="px-3 py-1 bg-card border border-border rounded-full text-xs font-medium text-muted-foreground shadow-sm">
+                            ✨ Smart AI
+                        </div>
+                        <div className="px-3 py-1 bg-card border border-border rounded-full text-xs font-medium text-muted-foreground shadow-sm">
+                            🚀 Real-time
+                        </div>
+                        <div className="px-3 py-1 bg-card border border-border rounded-full text-xs font-medium text-muted-foreground shadow-sm">
+                            📱 Responsive
+                        </div>
+                    </div>
                 </div>
 
-                {/* Mode Selection */}
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-lg mb-4">
-                    <label className="text-sm text-muted-foreground mb-3 block">
-                        Game Mode
-                    </label>
-                    <div className="flex gap-2 mb-6">
+                {/* Right Side - Action Card */}
+                <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-3xl p-6 lg:p-8 shadow-2xl w-full max-w-md mx-auto animate-in slide-in-from-bottom-8 duration-700">
+                    {/* Mode Tabs */}
+                    <div className="flex p-1 bg-muted/50 rounded-xl mb-8">
                         <button
                             onClick={() => setMode('local')}
-                            className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all cursor-pointer ${
+                            className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                 mode === 'local'
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted text-muted-foreground hover:bg-secondary'
+                                    ? 'bg-background text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                             }`}
                         >
-                            🎮 Local
+                            🎮 Local Play
                         </button>
                         <button
                             onClick={() => setMode('online')}
-                            className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all cursor-pointer ${
+                            className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                 mode === 'online'
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted text-muted-foreground hover:bg-secondary'
+                                    ? 'bg-background text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                             }`}
                         >
-                            🌐 Online
+                            🌐 Online Multiplayer
                         </button>
                     </div>
 
-                    {mode === 'online' && (
-                        <div className="mb-4">
-                            <label className="text-sm text-muted-foreground mb-2 block">
-                                Your Name
-                            </label>
-                            <input
-                                type="text"
-                                value={playerName}
-                                onChange={(e) => setPlayerName(e.target.value)}
-                                placeholder="Enter your name"
-                                className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                            />
-                        </div>
-                    )}
-
                     {mode === 'local' ? (
-                        <>
-                            {/* White Player */}
-                            <div className="mb-4">
-                                <label className="text-sm text-muted-foreground mb-2 block">
-                                    ⚪ White Player
-                                </label>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setWhite('human')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            white === 'human'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        👤 Human
-                                    </button>
-                                    <button
-                                        onClick={() => setWhite('ai')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            white === 'ai'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        🤖 AI
-                                    </button>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            {/* Player Selection Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                        White
+                                    </label>
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            onClick={() => setWhite('human')}
+                                            className={`py-2 px-3 rounded-xl border-2 transition-all ${
+                                                white === 'human'
+                                                    ? 'border-primary bg-primary/5 text-primary'
+                                                    : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            👤 Human
+                                        </button>
+                                        <button
+                                            onClick={() => setWhite('ai')}
+                                            className={`py-2 px-3 rounded-xl border-2 transition-all ${
+                                                white === 'ai'
+                                                    ? 'border-primary bg-primary/5 text-primary'
+                                                    : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            🤖 AI
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                        Black
+                                    </label>
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            onClick={() => setBlack('human')}
+                                            className={`py-2 px-3 rounded-xl border-2 transition-all ${
+                                                black === 'human'
+                                                    ? 'border-primary bg-primary/5 text-primary'
+                                                    : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            👤 Human
+                                        </button>
+                                        <button
+                                            onClick={() => setBlack('ai')}
+                                            className={`py-2 px-3 rounded-xl border-2 transition-all ${
+                                                black === 'ai'
+                                                    ? 'border-primary bg-primary/5 text-primary'
+                                                    : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            🤖 AI
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Black Player */}
-                            <div className="mb-4">
-                                <label className="text-sm text-muted-foreground mb-2 block">
-                                    ⚫ Black Player
-                                </label>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setBlack('human')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            black === 'human'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        👤 Human
-                                    </button>
-                                    <button
-                                        onClick={() => setBlack('ai')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            black === 'ai'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        🤖 AI
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* AI Configuration */}
+                            {/* AI Config */}
                             {hasAI && (
-                                <div className="mb-6 space-y-3">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                                        🎯 AI Configuration
-                                    </h3>
-                                    <div>
-                                        <label className="text-sm text-muted-foreground mb-1 flex justify-between">
-                                            <span>Skill Level (0-20)</span>
-                                            <span className="font-mono text-primary">
-                                                {aiConfig.skillLevel}
-                                            </span>
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="20"
-                                            value={aiConfig.skillLevel}
-                                            onChange={(e) =>
-                                                setAiConfig((c) => ({
-                                                    ...c,
-                                                    skillLevel: Number(
-                                                        e.target.value,
-                                                    ),
-                                                }))
-                                            }
-                                            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                                        />
+                                <div className="p-4 bg-muted/30 rounded-xl space-y-4 border border-border/50">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold text-sm">
+                                            Target Strength
+                                        </h3>
+                                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-mono">
+                                            Lvl {aiConfig.skillLevel}
+                                        </span>
                                     </div>
-                                    <div>
-                                        <label className="text-sm text-muted-foreground mb-1 flex justify-between">
-                                            <span>Search Depth (1-20)</span>
-                                            <span className="font-mono text-primary">
-                                                {aiConfig.depth}
-                                            </span>
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min="1"
-                                            max="20"
-                                            value={aiConfig.depth}
-                                            onChange={(e) =>
-                                                setAiConfig((c) => ({
-                                                    ...c,
-                                                    depth: Number(
-                                                        e.target.value,
-                                                    ),
-                                                }))
-                                            }
-                                            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                                        />
-                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="20"
+                                        value={aiConfig.skillLevel}
+                                        onChange={(e) =>
+                                            setAiConfig((c) => ({
+                                                ...c,
+                                                skillLevel: Number(
+                                                    e.target.value,
+                                                ),
+                                            }))
+                                        }
+                                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Higher skill levels increase Stockfish
+                                        depth and calculation time.
+                                    </p>
                                 </div>
                             )}
 
                             <button
                                 onClick={startGame}
-                                className="w-full py-3 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer text-lg"
+                                className="w-full py-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold text-lg shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                             >
-                                ▶️ Start Game
+                                Start Game
                             </button>
-                        </>
+                        </div>
                     ) : (
-                        <>
-                            {/* Create Room */}
-                            <div className="mb-6 p-4 bg-muted/50 rounded-xl">
-                                <h3 className="font-medium text-foreground mb-3">
-                                    Create Room
-                                </h3>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                    Your Identity
+                                </label>
+                                <input
+                                    type="text"
+                                    value={playerName}
+                                    onChange={(e) =>
+                                        setPlayerName(e.target.value)
+                                    }
+                                    placeholder="Enter your name"
+                                    className="w-full px-4 py-3 bg-background border-2 border-border focus:border-primary rounded-xl font-medium outline-none transition-colors"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
                                 <button
                                     onClick={createRoom}
-                                    className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-all cursor-pointer mb-3"
+                                    className="p-4 bg-primary/5 border-2 border-primary/20 hover:border-primary/50 text-primary rounded-xl flex flex-col items-center gap-2 transition-all hover:bg-primary/10 group"
                                 >
-                                    ➕ Create Room
-                                </button>
-                                <div
-                                    onClick={() => setIsPrivate((p) => !p)}
-                                    className="flex items-center gap-3 cursor-pointer group"
-                                >
-                                    <div
-                                        className={`w-12 h-7 rounded-full p-1 transition-all duration-300 ease-in-out ${
-                                            isPrivate
-                                                ? 'bg-primary'
-                                                : 'bg-muted-foreground/30 group-hover:bg-muted-foreground/40'
-                                        }`}
-                                    >
-                                        <div
-                                            className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ease-in-out ${
-                                                isPrivate ? 'translate-x-5' : ''
-                                            }`}
-                                        />
-                                    </div>
-                                    <span
-                                        className={`text-sm font-medium transition-colors ${
-                                            isPrivate
-                                                ? 'text-primary'
-                                                : 'text-muted-foreground group-hover:text-foreground'
-                                        }`}
-                                    >
-                                        {isPrivate
-                                            ? '🔒 Private Room'
-                                            : '🔓 Public Room'}
+                                    <span className="text-2xl group-hover:scale-110 transition-transform">
+                                        ➕
                                     </span>
+                                    <span className="font-bold text-sm">
+                                        Create Room
+                                    </span>
+                                </button>
+                                <div className="relative group">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
+                                    <button
+                                        onClick={() => setIsPrivate(!isPrivate)}
+                                        className={`w-full h-full p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all ${
+                                            isPrivate
+                                                ? 'bg-amber-500/5 border-amber-500/20 text-amber-600'
+                                                : 'bg-green-500/5 border-green-500/20 text-green-600'
+                                        }`}
+                                    >
+                                        <span className="text-2xl">
+                                            {isPrivate ? '🔒' : '🔓'}
+                                        </span>
+                                        <span className="font-bold text-sm">
+                                            {isPrivate ? 'Private' : 'Public'}
+                                        </span>
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Join Room */}
-                            <div className="p-4 bg-muted/50 rounded-xl mb-6">
-                                <h3 className="font-medium text-foreground mb-3">
-                                    Join Room
-                                </h3>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="font-bold text-muted-foreground">
+                                        Available Rooms
+                                    </span>
+                                    <button
+                                        onClick={() => socket.getRooms()}
+                                        className="text-primary hover:text-primary/80 text-xs font-medium"
+                                    >
+                                        Refresh
+                                    </button>
+                                </div>
+                                <div className="h-48 overflow-y-auto pr-2 space-y-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                                    {socket.rooms.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-muted-foreground/50 border-2 border-dashed border-border/50 rounded-xl">
+                                            <span className="text-2xl mb-2">
+                                                😴
+                                            </span>
+                                            <span className="text-sm">
+                                                No active rooms
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        socket.rooms.map((room) => (
+                                            <div
+                                                key={room.id}
+                                                className="group p-3 bg-secondary/30 hover:bg-secondary/50 border border-border/50 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
+                                                onClick={() =>
+                                                    joinRoom(room.id)
+                                                }
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-xs font-bold opacity-70">
+                                                        #{room.id.slice(0, 4)}
+                                                    </span>
+                                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                                        <span>
+                                                            {room.players}/2
+                                                        </span>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {room.spectators > 0 && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            👁️ {room.spectators}
+                                                        </span>
+                                                    )}
+                                                    <span className="p-2 bg-background rounded-lg text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        Join →
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
@@ -332,111 +372,20 @@ export default function HomePage() {
                                         onChange={(e) =>
                                             setRoomId(e.target.value)
                                         }
-                                        placeholder="Enter Room ID"
-                                        className="flex-1 px-4 py-2.5 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                                        placeholder="Or enter Room ID..."
+                                        className="flex-1 px-4 py-3 bg-secondary/20 border border-border focus:border-primary rounded-xl text-sm outline-none transition-colors"
                                     />
                                     <button
                                         onClick={() => joinRoom()}
                                         disabled={!roomId.trim()}
-                                        className="py-2.5 px-4 bg-secondary text-secondary-foreground rounded-lg font-medium hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
+                                        className="px-4 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-xl font-bold disabled:opacity-50 transition-colors"
                                     >
-                                        Join
+                                        Go
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Public Rooms List */}
-                            <div className="bg-card border border-border rounded-xl overflow-hidden">
-                                <div className="p-4 bg-muted/50 border-b border-border flex justify-between items-center">
-                                    <h3 className="font-medium text-foreground">
-                                        Browse Rooms
-                                    </h3>
-                                    <button
-                                        onClick={() => socket.getRooms()}
-                                        className="text-xs text-primary hover:underline cursor-pointer"
-                                    >
-                                        Refresh
-                                    </button>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto">
-                                    {socket.rooms.length === 0 ? (
-                                        <p className="text-center py-6 text-muted-foreground text-sm">
-                                            No public rooms available
-                                        </p>
-                                    ) : (
-                                        <div className="divide-y divide-border">
-                                            {socket.rooms.map((room) => (
-                                                <div
-                                                    key={room.id}
-                                                    className="p-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
-                                                >
-                                                    <div>
-                                                        <div className="font-mono text-sm font-medium text-foreground">
-                                                            {room.id}
-                                                        </div>
-                                                        <div className="text-xs text-muted-foreground">
-                                                            {room.players}/2
-                                                            Players
-                                                            {room.spectators >
-                                                                0 &&
-                                                                ` • ${room.spectators} Spectators`}
-                                                        </div>
-                                                    </div>
-
-                                                    <button
-                                                        onClick={() =>
-                                                            joinRoom(room.id)
-                                                        }
-                                                        className={`px-3 py-1.5 ${
-                                                            room.players === 2
-                                                                ? 'bg-secondary text-secondary-foreground'
-                                                                : 'bg-primary/10 text-primary'
-                                                        } text-sm font-medium rounded-lg hover:opacity-80 transition-all cursor-pointer`}
-                                                    >
-                                                        {room.players === 2
-                                                            ? 'Watch'
-                                                            : 'Join'}
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </>
+                        </div>
                     )}
-                </div>
-
-                {/* Quick Play Options */}
-                <div className="grid grid-cols-2 gap-3">
-                    <button
-                        onClick={() => {
-                            setGameConfig({
-                                mode: 'local',
-                                white: 'human',
-                                black: 'ai',
-                                aiConfig: { skillLevel: 1, depth: 1 },
-                            });
-                            navigate('/play');
-                        }}
-                        className="py-3 px-4 bg-card border border-border rounded-xl text-foreground hover:bg-secondary transition-all cursor-pointer"
-                    >
-                        🎯 Quick vs AI
-                    </button>
-                    <button
-                        onClick={() => {
-                            setGameConfig({
-                                mode: 'local',
-                                white: 'human',
-                                black: 'human',
-                                aiConfig: { skillLevel: 10, depth: 10 },
-                            });
-                            navigate('/play');
-                        }}
-                        className="py-3 px-4 bg-card border border-border rounded-xl text-foreground hover:bg-secondary transition-all cursor-pointer"
-                    >
-                        👥 2 Players
-                    </button>
                 </div>
             </div>
         </div>

@@ -83,7 +83,7 @@ export default function GamePage() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-            <div className="mb-4">
+            <div className="mb-4 lg:hidden">
                 <button
                     onClick={handleBack}
                     className="py-2 px-4 bg-secondary text-secondary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer"
@@ -93,6 +93,7 @@ export default function GamePage() {
             </div>
             <ChessGame
                 config={gameConfig}
+                handleBack={handleBack}
                 socket={isOnline ? socket : undefined}
             />
         </div>

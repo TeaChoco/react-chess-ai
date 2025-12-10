@@ -1,0 +1,28 @@
+#-Path: "motiva/server/render.yaml"
+services:
+    - type: web
+      name: react-chess-ai-server
+      runtime: node
+      region: singapore
+      buildCommand: |
+          cd server
+          pnpm install
+          pnpm run build
+      startCommand: |
+          cd server
+          node dist/main
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: NODE_OPTIONS
+            value: --max-old-space-size=512
+          - key: PORT
+            generateValue: true # Render จะกำหนด PORT อัตโนมัติ
+          - key: MONGODB_URI
+            sync: false # ใส่ใน Render Dashboard
+          - key: JWT_SECRET
+            sync: false
+          - key: CLIENT_URL
+            value: https://teachoco.github.io/react-chess-ai/
+      healthCheckPath: /health
+      autoDeploy: true

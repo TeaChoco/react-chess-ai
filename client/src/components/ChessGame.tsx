@@ -5,7 +5,7 @@ import type { GameConfig } from '../types/game';
 import useStockfish from '../hooks/useStockfish';
 import useChess, { toColor } from '../hooks/useChess';
 import useSocket, { type RoomData } from '../hooks/useSocket';
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import type { PieceDropHandlerArgs, SquareHandlerArgs } from 'react-chessboard';
 
 type UseSocket = ReturnType<typeof useSocket>;
@@ -13,10 +13,16 @@ type UseSocket = ReturnType<typeof useSocket>;
 interface ChessGameProps {
     config: GameConfig;
     socket?: UseSocket;
+    handleBack?: () => void;
 }
 
-export default function ChessGame({ config, socket }: ChessGameProps) {
+export default function ChessGame({
+    config,
+    socket,
+    handleBack,
+}: ChessGameProps) {
     const {
+        game,
         gameState,
         makeMove,
         makeMoveFromUci,
@@ -32,9 +38,14 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         config.playerColor || 'w',
     );
     const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+
     const [optionSquares, setOptionSquares] = useState<
         Record<string, React.CSSProperties>
     >({});
+    const [premove, setPremove] = useState<{
+        from: string;
+        to: string;
+    } | null>(null);
 
     const isOnline = config.mode === 'online';
     const roomData = socket?.roomData;
@@ -46,6 +57,10 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         ? roomData?.myColor === 'b'
         : config.playerColor === 'b';
     const isSpectator = isOnline ? roomData?.isSpectator : false;
+
+    // Allow dragging if it's my piece, even if not my turn (for premoves)
+    // But don't allow if spectator
+    const arePiecesDraggable = !isSpectator;
 
     {
         roomData?.spectators.length === 0 ? (
@@ -135,6 +150,17 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         }
     }, [isOnline, roomData?.myColor]);
 
+    const handleMove = useCallback(
+        (from: string, to: string, promotion?: string) => {
+            const success = makeMove(from as Square, to as Square, promotion);
+            if (success && socket && isOnline) {
+                socket.sendMove({ from, to, promotion });
+            }
+            return success;
+        },
+        [makeMove, socket, isOnline],
+    );
+
     // AI makes move
     useEffect(() => {
         if (isAiTurn() && !gameState.isGameOver && aiReady && !isThinking) {
@@ -168,21 +194,113 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
         });
     }, [socket, isOnline, makeMove, resetGame]);
 
-    const handleMove = useCallback(
-        (from: string, to: string, promotion?: string) => {
-            const success = makeMove(from as Square, to as Square, promotion);
-            if (success && socket && isOnline) {
-                socket.sendMove({ from, to, promotion });
+    // Handle Premoves
+    useEffect(() => {
+        if (!premove) return;
+
+        // Try to execute premove if it's our turn
+        if (canPlayerMove()) {
+            const success = handleMove(premove.from, premove.to);
+            if (success) {
+                setPremove(null);
+                setOptionSquares({});
+            } else {
+                // Invalid premove (e.g. piece captured or blocked), clear it
+                setPremove(null);
             }
-            return success;
-        },
-        [makeMove, socket, isOnline],
-    );
+        }
+    }, [gameState.turn, canPlayerMove, handleMove, premove]);
+
+    const onMouseOverSquare = ({ square }: SquareHandlerArgs) => {
+        if (!premove && canPlayerMove()) {
+            const moves = getLegalMoves(square as Square);
+            if (moves.length === 0) return;
+
+            const newSquares: Record<string, React.CSSProperties> = {};
+            moves.forEach((move) => {
+                newSquares[move] = {
+                    background:
+                        game.get(move as Square) &&
+                        game.get(move as Square)?.color !==
+                            game.get(square as Square)?.color
+                            ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+                            : 'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
+                    borderRadius: '50%',
+                };
+            });
+            newSquares[square] = {
+                background: 'rgba(255, 255, 0, 0.4)',
+            };
+            setOptionSquares(newSquares);
+        }
+    };
+
+    const onMouseOutSquare = () => {
+        if (!selectedSquare) {
+            setOptionSquares({});
+        }
+    };
 
     const onSquareClick = useCallback(
         ({ square }: SquareHandlerArgs) => {
-            if (!canPlayerMove()) return;
+            // If we have a premove, clicking anywhere cancels it
+            if (premove) {
+                setPremove(null);
+                setOptionSquares({});
+                return;
+            }
 
+            if (!canPlayerMove()) {
+                // Try to set premove? Only via drag usually, but maybe click too?
+                // For simplicity, let's keep click for immediate moves or confirming premoves if we wanted to support click-click premove.
+                // But generally click-click is harder to distinguish from just selecting pieces.
+                // Let's support clicking a piece then clicking target for premove if we want.
+                // For now, let's stick to Drag for premoves or simple implemented Click logic.
+
+                // Refactoring click to support premove clicking:
+                // 1. Select piece (if mine)
+                // 2. Select target
+                if (selectedSquare) {
+                    // Start premove
+                    // Basic check: is valid 'shape' of move? We can't validate 100% without board state future,
+                    // but we can at least check if it makes sense (e.g. not same color).
+                    // Actually, letting users premove ANYTHING is risky visually.
+                    // Let's restrict to: simple logic.
+                    setPremove({ from: selectedSquare, to: square });
+                    setSelectedSquare(null);
+                    return;
+                }
+
+                // Select a piece for premove
+                // Must be my piece
+                const piece = game.get(square as Square);
+                if (
+                    piece &&
+                    ((isOnline &&
+                        ((amIWhite && piece.color === 'w') ||
+                            (amIBlack && piece.color === 'b'))) ||
+                        (!isOnline &&
+                            ((config.white === 'human' &&
+                                piece.color === 'w') ||
+                                (config.black === 'human' &&
+                                    piece.color === 'b'))))
+                ) {
+                    setSelectedSquare(square);
+                    // We can't show legal moves for premoves easily because we don't know the board state then.
+                    // So minimal feedback.
+                    setOptionSquares({
+                        [square]: { backgroundColor: 'rgba(255, 0, 0, 0.4)' },
+                    });
+                } else if (!isOnline) {
+                    // Local game spectator/AI vs AI case?
+                    // Allow selecting if it's the color's turn? No it's NOT turn.
+                    // So just ignore.
+                }
+
+                return;
+            }
+
+            // Normal Move Logic
             if (selectedSquare) {
                 const success = handleMove(selectedSquare, square);
                 setSelectedSquare(null);
@@ -200,7 +318,11 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                 legalMoves.forEach((move) => {
                     newSquares[move] = {
                         background:
-                            'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
+                            game.get(move as Square) &&
+                            game.get(move as Square)?.color !==
+                                game.get(square as Square)?.color
+                                ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+                                : 'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
                         borderRadius: '50%',
                     };
                 });
@@ -210,20 +332,79 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                 setOptionSquares({});
             }
         },
-        [selectedSquare, canPlayerMove, handleMove, getLegalMoves],
+        [
+            selectedSquare,
+            canPlayerMove,
+            handleMove,
+            getLegalMoves,
+            premove,
+            game,
+            isOnline,
+            amIWhite,
+            amIBlack,
+            config.white,
+            config.black,
+        ],
     );
 
     const onPieceDrop = useCallback(
         ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
-            if (!canPlayerMove()) return false;
             if (!sourceSquare || !targetSquare) return false;
-            const success = handleMove(sourceSquare, targetSquare);
-            setSelectedSquare(null);
-            setOptionSquares({});
-            return success;
+
+            if (canPlayerMove()) {
+                const success = handleMove(sourceSquare, targetSquare);
+                setSelectedSquare(null);
+                setOptionSquares({});
+                return success;
+            }
+
+            // Premove Logic
+            // Check if piece is mine
+            const piece = game.get(sourceSquare as Square);
+            const isMyPiece = isOnline
+                ? (amIWhite && piece?.color === 'w') ||
+                  (amIBlack && piece?.color === 'b')
+                : true; // Local game, can premove for current "waiting" side? Or simplify: only if not Spectator.
+
+            // If it's my piece and NOT my turn, treat as premove
+            if (isMyPiece && !isSpectator && !canPlayerMove()) {
+                setPremove({ from: sourceSquare, to: targetSquare });
+                setSelectedSquare(null);
+                // Clear previous option squares to show premove clearly
+                setOptionSquares({});
+                return false; // Snap back, visual will be handled by customSquareStyles
+            }
+
+            return false;
         },
-        [canPlayerMove, handleMove],
+        [
+            canPlayerMove,
+            handleMove,
+            game,
+            isOnline,
+            amIWhite,
+            amIBlack,
+            isSpectator,
+        ],
     );
+
+    // Merge styles for Option Squares and Premoves
+    const customSquareStyles = useMemo(() => {
+        const styles = { ...optionSquares };
+        if (premove) {
+            styles[premove.from] = {
+                backgroundColor: 'rgba(200, 0, 0, 0.4)',
+            };
+            styles[premove.to] = {
+                backgroundColor: 'rgba(200, 0, 0, 0.4)',
+            };
+        }
+        // Also highlight last move from history if available? (game.history({verbose: true}).pop())
+        // But chessboard might handle last move highlight automatically or we need to add it?
+        // react-chessboard doesn't auto-highlight last move squares usually.
+        // Let's stick to requested features first.
+        return styles;
+    }, [optionSquares, premove]);
 
     const hasAI = config.white === 'ai' || config.black === 'ai';
 
@@ -261,26 +442,34 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
     };
 
     return (
-        <div className="flex flex-col items-center gap-6 w-full max-w-6xl mx-auto p-4">
+        <div className="flex flex-col items-center gap-4 lg:gap-6 w-full max-w-6xl mx-auto p-2 md:p-4">
             {/* Alert Toast */}
             {alertMessage && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4">
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 w-[90%] max-w-md">
                     <div
-                        className="bg-red-800/60 text-red-50 px-6 py-3 rounded-lg shadow-lg flex items-center gap-4 border border-red-500/20 cursor-pointer"
+                        className="bg-red-800/60 text-red-50 px-4 py-3 rounded-lg shadow-lg flex items-center justify-between gap-4 border border-red-500/20 cursor-pointer"
                         onClick={() => setAlertMessage(null)}
                     >
-                        <span>⚠️ {alertMessage}</span>
-                        <button className="text-sm opacity-100 hover:opacity-100">
+                        <span className="text-sm">⚠️ {alertMessage}</span>
+                        <button className="text-sm opacity-100 hover:opacity-100 px-2">
                             ✕
                         </button>
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-col lg:flex-row gap-8 w-full">
+            <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 w-full">
                 {/* Left Panel - Game Info */}
                 <div className="w-full lg:w-64 order-2 lg:order-1">
                     <div className="bg-card border border-border rounded-2xl p-4 shadow-lg mb-4">
+                        <div className="mb-2 hidden lg:flex">
+                            <button
+                                onClick={handleBack}
+                                className="py-2 w-full px-4 bg-secondary text-secondary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer"
+                            >
+                                ← Back to Menu
+                            </button>
+                        </div>
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-lg font-bold text-foreground">
                                 Game Info
@@ -502,7 +691,7 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                 </div>
 
                 {/* Center - Chessboard */}
-                <div className="order-1 lg:order-2 flex flex-col gap-4">
+                <div className="order-1 lg:order-2 flex flex-col gap-4 w-full lg:flex-1 min-w-0">
                     {/* Top Label */}
                     <div className="bg-card/50 px-4 py-2 rounded-xl flex items-center justify-between border border-border">
                         <span className="font-medium">
@@ -521,14 +710,36 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                         </span>
                     </div>
 
-                    <div className="bg-card border border-border rounded-2xl p-4 shadow-lg">
-                        <div className=" aspect-square">
+                    <div className="bg-card border border-border rounded-2xl p-2 md:p-4 shadow-lg flex justify-center items-center">
+                        <div className="w-full max-w-[85vw] md:max-w-[600px] lg:max-w-[70vh] aspect-square">
+                            {/* <Chessboard
+                                position={gameState.fen}
+                                onPieceDrop={onPieceDrop}
+                                onSquareClick={onSquareClick}
+                                onMouseOverSquare={onMouseOverSquare}
+                                onMouseOutSquare={onMouseOutSquare}
+                                customSquareStyles={customSquareStyles}
+                                boardOrientation={toColor(boardOrientation)}
+                                arePiecesDraggable={arePiecesDraggable}
+                                customBoardStyle={{
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                                }}
+                                customDarkSquareStyle={{
+                                    backgroundColor: 'gray',
+                                }}
+                                customLightSquareStyle={{
+                                    backgroundColor: 'white',
+                                }}
+                            /> */}
                             <Chessboard
                                 options={{
                                     position: gameState.fen,
                                     onPieceDrop: onPieceDrop,
-                                    squareStyles: optionSquares,
                                     onSquareClick: onSquareClick,
+                                    onMouseOutSquare: onMouseOutSquare,
+                                    onMouseOverSquare: onMouseOverSquare,
+                                    squareStyles: customSquareStyles,
                                     boardOrientation: toColor(boardOrientation),
                                     boardStyle: {
                                         borderRadius: '8px',
@@ -566,12 +777,12 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                 </div>
 
                 {/* Right Panel - Move History */}
-                <div className="w-full lg:w-64 order-3">
-                    <div className="bg-card border border-border rounded-2xl p-4 shadow-lg">
-                        <h2 className="text-lg font-bold mb-4 text-foreground">
+                <div className="w-full lg:w-64 order-3 flex flex-col">
+                    <div className="bg-card border border-border rounded-2xl p-4 shadow-lg flex-1 flex flex-col h-full max-h-64 lg:max-h-128">
+                        <h2 className="text-lg font-bold mb-4 text-foreground shrink-0">
                             Move History
                         </h2>
-                        <div className="max-h-80 overflow-y-auto">
+                        <div className="overflow-y-auto flex-1 pr-1">
                             {gameState.history.length === 0 ? (
                                 <p className="text-muted-foreground text-sm text-center py-4">
                                     No moves yet
@@ -585,7 +796,7 @@ export default function ChessGame({ config, socket }: ChessGameProps) {
                                                 index % 2 === 0
                                                     ? 'bg-muted'
                                                     : 'bg-secondary'
-                                            } text-foreground`}
+                                            } text-foreground text-center`}
                                         >
                                             {index % 2 === 0 && (
                                                 <span className="text-muted-foreground mr-1">
