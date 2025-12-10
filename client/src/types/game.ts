@@ -1,7 +1,8 @@
 // Path: "client/src/types/game.ts"
+import type { Color } from 'chess.js';
+
 export type PlayerType = 'human' | 'ai';
 export type GameMode = 'local' | 'online';
-export type PlayerColor = 'white' | 'black';
 
 export interface AIConfig {
     skillLevel: number; // 0-20
@@ -14,12 +15,12 @@ export interface GameConfig {
     black: PlayerType;
     aiConfig: AIConfig;
     roomId?: string;
-    playerColor?: PlayerColor;
+    playerColor?: Color;
 }
 
 export interface OnlineRoom {
     id: string;
-    hostColor: PlayerColor;
+    hostColor: Color;
     players: number;
     status: 'waiting' | 'playing' | 'finished';
 }

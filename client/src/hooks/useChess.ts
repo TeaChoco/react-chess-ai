@@ -1,17 +1,21 @@
 // Path: "client/src/hooks/useChess.ts"
-import { Chess, type Square } from 'chess.js';
+import { Chess } from 'chess.js';
+import type { Square, Color } from 'chess.js';
 import { useCallback, useState } from 'react';
 
 export interface GameState {
     fen: string;
-    turn: 'w' | 'b';
+    turn: Color;
+    isDraw: boolean;
     isCheck: boolean;
     isCheckmate: boolean;
     isStalemate: boolean;
-    isDraw: boolean;
     isGameOver: boolean;
     history: string[];
 }
+
+export const toColor = (color: Color): 'white' | 'black' =>
+    color === 'w' ? 'white' : 'black';
 
 const getGameState = (chessInstance: Chess): GameState => ({
     fen: chessInstance.fen(),

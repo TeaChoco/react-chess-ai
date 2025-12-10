@@ -8,23 +8,25 @@ import {
     OnGatewayDisconnect,
     OnGatewayConnection,
 } from '@nestjs/websockets';
+import { Chess, Color } from 'chess.js';
 import { Server, Socket } from 'socket.io';
-
-interface Player {
-    id: string;
-    color: 'white' | 'black';
-    name: string;
-}
 
 interface Spectator {
     id: string;
     name: string;
 }
 
+interface Player {
+    id: string;
+    color: Color;
+    name: string;
+}
+
 interface Room {
     id: string;
-    players: Map<string, Player>;
-    spectators: Spectator[];
+    whitePlayer?: Player;
+    blackPlayer?: Player;
+    spectators: Player[];
     fen: string;
     isPublic: boolean;
 }
@@ -32,6 +34,7 @@ interface Room {
 interface RoomInfo {
     id: string;
     players: number;
+    spectators: number;
     fen: string;
 }
 
@@ -71,10 +74,15 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private getPublicRooms(): RoomInfo[] {
         const publicRooms: RoomInfo[] = [];
         this.rooms.forEach((room) => {
-            if (room.isPublic && room.players.size < 2) {
+            let playerCount = 0;
+            if (room.whitePlayer) playerCount++;
+            if (room.blackPlayer) playerCount++;
+
+            if (room.isPublic && playerCount < 2) {
                 publicRooms.push({
                     id: room.id,
-                    players: room.players.size,
+                    players: playerCount,
+                    spectators: room.spectators.length,
                     fen: room.fen,
                 });
             }
@@ -86,11 +94,21 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.emit('rooms-list', this.getPublicRooms());
     }
 
+    private getRoomState(room: Room) {
+        return {
+            roomId: room.id,
+            fen: room.fen,
+            whitePlayer: room.whitePlayer || null,
+            blackPlayer: room.blackPlayer || null,
+            spectators: room.spectators,
+        };
+    }
+
     @SubscribeMessage('create-room')
     handleCreateRoom(
         @ConnectedSocket() client: Socket,
         @MessageBody()
-        data: { color: 'white' | 'black'; isPublic?: boolean; name: string },
+        data: { color: Color; isPublic?: boolean; name: string },
     ) {
         console.log(`Received create-room from ${client.id}:`, data);
         let roomId = this.generateRoomId();
@@ -98,16 +116,18 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
             roomId = this.generateRoomId();
         }
 
+        const creator: Player = {
+            id: client.id,
+            name: data.name,
+            color: 'w', // Placeholder
+        };
+
         const room: Room = {
             id: roomId,
-            players: new Map([
-                [
-                    client.id,
-                    { id: client.id, color: data.color, name: data.name },
-                ],
-            ]),
-            spectators: [],
-            fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            whitePlayer: undefined,
+            blackPlayer: undefined,
+            spectators: [creator],
+            fen: new Chess().fen(),
             isPublic: data.isPublic ?? true,
         };
 
@@ -115,11 +135,12 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.playerRooms.set(client.id, roomId);
         client.join(roomId);
 
-        client.emit('room-created', {
-            roomId,
-            color: data.color,
-            fen: room.fen,
+        client.emit('room-joined', {
+            ...this.getRoomState(room),
+            myColor: null,
+            isSpectator: true,
         });
+
         this.broadcastRoomsList();
         console.log(
             `Room created: ${roomId} by ${data.name} (${client.id}) as ${data.color}`,
@@ -133,55 +154,140 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ) {
         const room = this.rooms.get(data.roomId);
 
-        if (!room) {
-            client.emit('error', 'Room not found');
-            return;
-        }
+        if (!room) return client.emit('error', 'Room not found');
+
+        const isNameTaken =
+            room.spectators.some((s) => s.name === data.name) ||
+            room.whitePlayer?.name === data.name ||
+            room.blackPlayer?.name === data.name;
+
+        if (isNameTaken)
+            return client.emit('error', 'Name is already taken in this room');
 
         this.playerRooms.set(client.id, data.roomId);
         client.join(data.roomId);
 
-        // Join as Spectator if full
-        if (room.players.size >= 2) {
-            room.spectators.push({ id: client.id, name: data.name });
-            client.emit('room-joined', {
-                roomId: data.roomId,
-                color: null, // Spectator
-                fen: room.fen,
-                isSpectator: true,
-                players: Array.from(room.players.values()),
-            });
+        // Always join as spectator first
+        const spectator: Player = {
+            id: client.id,
+            name: data.name,
+            color: 'w', // Placeholder, not used for spectators
+        };
+        room.spectators.push(spectator);
+
+        client.emit('room-joined', {
+            ...this.getRoomState(room),
+            myColor: null,
+            isSpectator: true,
+        });
+
+        // Broadcast to room
+        this.server
+            .to(data.roomId)
+            .emit('room-updated', this.getRoomState(room));
+
+        console.log(
+            `User ${data.name} (${client.id}) joined room ${data.roomId} as spectator`,
+        );
+    }
+
+    @SubscribeMessage('claim-seat')
+    handleClaimSeat(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { color: Color },
+    ) {
+        console.log(
+            `claim-seat request from ${client.id} for color ${data.color}`,
+        );
+        const roomId = this.playerRooms.get(client.id);
+        if (!roomId) {
             console.log(
-                `Spectator ${data.name} (${client.id}) joined room ${data.roomId}`,
+                `claim-seat: Room ID not found for client ${client.id}`,
             );
             return;
         }
+        const room = this.rooms.get(roomId);
+        if (!room) {
+            console.log(`claim-seat: Room not found ${roomId}`);
+            return;
+        }
 
-        // Join as Player
-        const existingPlayer = Array.from(room.players.values())[0];
-        const playerColor =
-            existingPlayer.color === 'white' ? 'black' : 'white';
+        // Check if seat is taken
+        if (data.color === 'w' && room.whitePlayer) {
+            client.emit('error', 'White seat is taken');
+            return;
+        }
+        if (data.color === 'b' && room.blackPlayer) {
+            client.emit('error', 'Black seat is taken');
+            return;
+        }
 
-        room.players.set(client.id, {
-            id: client.id,
-            color: playerColor,
-            name: data.name,
-        });
-
-        client.emit('room-joined', {
-            roomId: data.roomId,
-            color: playerColor,
-            fen: room.fen,
-            players: Array.from(room.players.values()),
-        });
-        client.to(data.roomId).emit('opponent-joined', {
-            name: data.name,
-        });
-        this.broadcastRoomsList();
-
-        console.log(
-            `Player ${data.name} (${client.id}) joined room ${data.roomId} as ${playerColor}`,
+        // Find user in spectators
+        const spectatorIndex = room.spectators.findIndex(
+            (s) => s.id === client.id,
         );
+        if (spectatorIndex === -1) {
+            console.log(
+                `claim-seat: User ${client.id} not found in spectators. Spectators:`,
+                room.spectators.map((s) => s.id),
+            );
+            // User might be the other player switching seats?
+            // For simplicity, enforce Stand -> Sit workflow, but enable switching if necessary.
+            // Let's check if they are already seated.
+            if (
+                room.whitePlayer?.id === client.id ||
+                room.blackPlayer?.id === client.id
+            ) {
+                client.emit('error', 'You are already seated. Stand up first.');
+                return;
+            }
+            client.emit('error', 'You are not in the room');
+            return;
+        }
+
+        const user = room.spectators[spectatorIndex];
+        // Remove from spectators
+        room.spectators.splice(spectatorIndex, 1);
+
+        // Assign to seat
+        const player: Player = { ...user, color: data.color };
+        if (data.color === 'w') room.whitePlayer = player;
+        else room.blackPlayer = player;
+
+        // Notify user
+        client.emit('seat-claimed', { color: data.color });
+
+        // Broadcast Update
+        this.server.to(roomId).emit('room-updated', this.getRoomState(room));
+        this.broadcastRoomsList();
+        console.log(`claim-seat success for ${client.id} in room ${roomId}`);
+    }
+
+    @SubscribeMessage('leave-seat')
+    handleLeaveSeat(@ConnectedSocket() client: Socket) {
+        const roomId = this.playerRooms.get(client.id);
+        if (!roomId) return;
+        const room = this.rooms.get(roomId);
+        if (!room) return;
+
+        let player: Player | undefined;
+        if (room.whitePlayer?.id === client.id) {
+            player = room.whitePlayer;
+            room.whitePlayer = undefined;
+        } else if (room.blackPlayer?.id === client.id) {
+            player = room.blackPlayer;
+            room.blackPlayer = undefined;
+        } else return; // Not seated
+
+        // Reset game
+        client.emit('reset-game');
+
+        // Add back to spectators
+        room.spectators.push(player);
+
+        client.emit('seat-left');
+        this.server.to(roomId).emit('room-updated', this.getRoomState(room));
+        this.broadcastRoomsList();
     }
 
     @SubscribeMessage('move')
@@ -195,26 +301,16 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const room = this.rooms.get(roomId);
         if (!room) return;
 
-        // Verify player is part of the game (not spectator)
-        if (!room.players.has(client.id)) {
+        // Verify player is part of the game
+        if (
+            room.whitePlayer?.id !== client.id &&
+            room.blackPlayer?.id !== client.id
+        ) {
             return;
         }
 
         client.to(roomId).emit('move', move);
-        // Update room FEN (simplified, ideally validate move with chess logic)
-        // For now relying on client to send valid moves, but we should track state
-        // We really should be validating here, but keeping it simple as per current architecture
         console.log(`Move in room ${roomId}: ${move.from} -> ${move.to}`);
-
-        // Also update FEN in our simple store if we were tracking it properly
-        // For spectators to get sync, we need to update the FEN.
-        // Since we don't have chess logic here, we'll blindly trust the move updates the state on clients.
-        // A better way is if the client sends the new FEN. Let's assume for now we just relay.
-        // Actually, to support late spectator join, we need the FEN.
-        // Let's ask client to send FEN or handle it.
-        // UPDATE: Client sends 'fen' update event? Or we just broadcast 'move'.
-        // Spectators joining late need the CURRENT FEN.
-        // Let's add a `update-fen` message or include FEN in move?
     }
 
     @SubscribeMessage('update-fen')
@@ -225,7 +321,11 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const roomId = this.playerRooms.get(client.id);
         if (!roomId) return;
         const room = this.rooms.get(roomId);
-        if (room && room.players.has(client.id)) {
+        if (
+            room &&
+            (room.whitePlayer?.id === client.id ||
+                room.blackPlayer?.id === client.id)
+        ) {
             room.fen = data.fen;
         }
     }
@@ -237,21 +337,39 @@ export class ChessGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         const room = this.rooms.get(roomId);
         if (room) {
-            if (room.players.has(client.id)) {
-                room.players.delete(client.id);
-                client.to(roomId).emit('opponent-left');
-                this.broadcastRoomsList();
+            // Remove from seats
+            let wasSeated = false;
+            if (room.whitePlayer?.id === client.id) {
+                room.whitePlayer = undefined;
+                wasSeated = true;
+            } else if (room.blackPlayer?.id === client.id) {
+                room.blackPlayer = undefined;
+                wasSeated = true;
             } else {
-                // Remove spectator
+                // Remove from spectators
                 room.spectators = room.spectators.filter(
                     (s) => s.id !== client.id,
                 );
             }
 
-            if (room.players.size === 0 && room.spectators.length === 0) {
+            if (wasSeated) {
+                room.fen =
+                    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+            }
+
+            if (
+                !room.whitePlayer &&
+                !room.blackPlayer &&
+                room.spectators.length === 0
+            ) {
                 this.rooms.delete(roomId);
                 console.log(`Room ${roomId} deleted (empty)`);
+            } else {
+                this.server
+                    .to(roomId)
+                    .emit('room-updated', this.getRoomState(room));
             }
+            this.broadcastRoomsList();
         }
 
         client.leave(roomId);

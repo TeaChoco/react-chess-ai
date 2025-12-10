@@ -1,5 +1,6 @@
 // Path: "client/src/pages/HomePage.tsx"
 import { useSetAtom } from 'jotai';
+
 import { useEffect, useMemo } from 'react';
 import useSocket from '../hooks/useSocket';
 import { useNavigate } from 'react-router-dom';
@@ -30,10 +31,7 @@ export default function HomePage() {
             depth: 10,
         },
     );
-    const [hostColor, setHostColor] = useLocalStorage<'white' | 'black'>(
-        'chess_hostColor',
-        'white',
-    );
+
     const [playerName, setPlayerName] = useLocalStorage<string>(
         'chess_playerName',
         'Guest',
@@ -66,14 +64,12 @@ export default function HomePage() {
     const createRoom = () => {
         setGameConfig({
             mode: 'online',
-            white: hostColor === 'white' ? 'human' : 'human',
-            black: hostColor === 'black' ? 'human' : 'human',
+            white: 'human',
+            black: 'human',
             aiConfig: { skillLevel: 10, depth: 10 },
-            playerColor: hostColor,
         });
         const queryParams = new URLSearchParams({
             create: 'true',
-            color: hostColor,
             name: playerName,
         });
         if (isPrivate) queryParams.append('private', 'true');
@@ -287,48 +283,41 @@ export default function HomePage() {
                                 <h3 className="font-medium text-foreground mb-3">
                                     Create Room
                                 </h3>
-                                <label className="text-sm text-muted-foreground mb-2 block">
-                                    Your Color
-                                </label>
-                                <div className="flex gap-2 mb-3">
-                                    <button
-                                        onClick={() => setHostColor('white')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            hostColor === 'white'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        ⚪ White
-                                    </button>
-                                    <button
-                                        onClick={() => setHostColor('black')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            hostColor === 'black'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        }`}
-                                    >
-                                        ⚫ Black
-                                    </button>
-                                </div>
                                 <button
                                     onClick={createRoom}
                                     className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-all cursor-pointer mb-3"
                                 >
                                     ➕ Create Room
                                 </button>
-                                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer justify-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={isPrivate}
-                                        onChange={(e) =>
-                                            setIsPrivate(e.target.checked)
-                                        }
-                                        className="rounded border-input text-primary focus:ring-primary"
-                                    />
-                                    🔒 Private Room (Hidden from list)
-                                </label>
+                                <div
+                                    onClick={() => setIsPrivate((p) => !p)}
+                                    className="flex items-center gap-3 cursor-pointer group"
+                                >
+                                    <div
+                                        className={`w-12 h-7 rounded-full p-1 transition-all duration-300 ease-in-out ${
+                                            isPrivate
+                                                ? 'bg-primary'
+                                                : 'bg-muted-foreground/30 group-hover:bg-muted-foreground/40'
+                                        }`}
+                                    >
+                                        <div
+                                            className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ease-in-out ${
+                                                isPrivate ? 'translate-x-5' : ''
+                                            }`}
+                                        />
+                                    </div>
+                                    <span
+                                        className={`text-sm font-medium transition-colors ${
+                                            isPrivate
+                                                ? 'text-primary'
+                                                : 'text-muted-foreground group-hover:text-foreground'
+                                        }`}
+                                    >
+                                        {isPrivate
+                                            ? '🔒 Private Room'
+                                            : '🔓 Public Room'}
+                                    </span>
+                                </div>
                             </div>
 
                             {/* Join Room */}
@@ -388,6 +377,9 @@ export default function HomePage() {
                                                         <div className="text-xs text-muted-foreground">
                                                             {room.players}/2
                                                             Players
+                                                            {room.spectators >
+                                                                0 &&
+                                                                ` • ${room.spectators} Spectators`}
                                                         </div>
                                                     </div>
 

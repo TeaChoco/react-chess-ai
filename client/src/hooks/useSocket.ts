@@ -1,25 +1,37 @@
 // Path: "client/src/hooks/useSocket.ts"
+import type { Color } from 'chess.js';
 import { io, Socket } from 'socket.io-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type PlayerColor = 'white' | 'black';
+export interface Player {
+    id: string;
+    color: Color;
+    name: string;
+}
 
-interface RoomData {
-    color: PlayerColor;
-    isSpectator?: boolean;
+export interface Spectator {
+    id: string;
+    name: string;
+}
+
+export interface RoomData {
     roomId: string;
-    players: { id: string; color: 'white' | 'black'; name: string }[];
-    fen?: string;
-    opponentConnected?: boolean;
+    fen: string;
+    whitePlayer?: Player | null;
+    blackPlayer?: Player | null;
+    spectators: Spectator[];
+    myColor?: Color | null;
+    isSpectator: boolean;
 }
 
 export interface RoomInfo {
     id: string;
     players: number;
+    spectators: number;
     fen: string;
 }
 
-interface MoveData {
+export interface MoveData {
     from: string;
     to: string;
     promotion?: string;
@@ -34,10 +46,11 @@ export default function useSocket() {
     const [rooms, setRooms] = useState<RoomInfo[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const onOpponentLeftRef = useRef<(() => void) | null>(null);
-    const onOpponentJoinedRef = useRef<(() => void) | null>(null);
     const [roomData, setRoomData] = useState<RoomData | null>(null);
     const onMoveReceivedRef = useRef<((move: MoveData) => void) | null>(null);
+    const onResetGameRef = useRef<(() => void) | null>(null);
+
+    const [socketId, setSocketId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         const socket = io(SERVER_URL, {
@@ -48,6 +61,7 @@ export default function useSocket() {
         socket.on('connect', () => {
             setIsConnected(true);
             setError(null);
+            setSocketId(socket.id);
         });
 
         socket.on('disconnect', () => {
@@ -59,79 +73,39 @@ export default function useSocket() {
             setIsConnected(false);
         });
 
-        socket.on(
-            'room-created',
-            (data: { roomId: string; color: PlayerColor; fen: string }) => {
-                setRoomData({
-                    roomId: data.roomId,
-                    color: data.color,
-                    players: [],
-                    fen: data.fen,
-                    opponentConnected: false,
-                });
-            },
-        );
-
-        socket.on(
-            'room-joined',
-            (data: {
-                roomId: string;
-                color: PlayerColor;
-                isSpectator: boolean;
-                players: {
-                    id: string;
-                    color: 'white' | 'black';
-                    name: string;
-                }[];
-                fen: string;
-            }) => {
-                setRoomData({
-                    roomId: data.roomId,
-                    color: data.color,
-                    isSpectator: data.isSpectator,
-                    players: data.players,
-                    fen: data.fen,
-                    opponentConnected: data.players.length >= 2,
-                });
-            },
-        );
-
-        socket.on('opponent-joined', (data: { name: string; id: string }) => {
-            setRoomData((prev) =>
-                prev
-                    ? {
-                          ...prev,
-                          players: [
-                              ...prev.players,
-                              {
-                                  id: data.id,
-                                  color:
-                                      prev.color === 'white'
-                                          ? 'black'
-                                          : 'white',
-                                  name: data.name,
-                              },
-                          ],
-                          opponentConnected: true,
-                      }
-                    : null,
-            );
-            onOpponentJoinedRef.current?.();
+        socket.on('room-joined', (data: RoomData) => {
+            setRoomData(data);
         });
 
-        socket.on('opponent-left', () => {
+        socket.on(
+            'room-updated',
+            (data: Omit<RoomData, 'myColor' | 'isSpectator'>) => {
+                setRoomData((prev) => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        ...data,
+                    };
+                });
+            },
+        );
+
+        socket.on('seat-claimed', (data: { color: Color }) => {
             setRoomData((prev) =>
                 prev
-                    ? {
-                          ...prev,
-                          players: prev.players.filter(
-                              (player) => player.id !== 'opponent', // Assuming 'opponent' is a placeholder ID or needs to be filtered by actual ID
-                          ),
-                          opponentConnected: false,
-                      }
+                    ? { ...prev, myColor: data.color, isSpectator: false }
                     : null,
             );
-            onOpponentLeftRef.current?.();
+        });
+
+        socket.on('seat-left', () => {
+            setRoomData((prev) =>
+                prev ? { ...prev, myColor: null, isSpectator: true } : null,
+            );
+        });
+
+        socket.on('reset-game', () => {
+            onResetGameRef.current?.();
         });
 
         socket.on('move', (move: MoveData) => {
@@ -162,15 +136,20 @@ export default function useSocket() {
         setRoomData(null);
     }, []);
 
-    const createRoom = useCallback(
-        (color: 'white' | 'black', isPublic: boolean = true, name: string) => {
-            socketRef.current?.emit('create-room', { color, isPublic, name });
-        },
-        [],
-    );
+    const createRoom = useCallback((isPublic: boolean = true, name: string) => {
+        socketRef.current?.emit('create-room', { isPublic, name });
+    }, []);
 
     const joinRoom = useCallback((roomId: string, name: string) => {
         socketRef.current?.emit('join-room', { roomId, name });
+    }, []);
+
+    const claimSeat = useCallback((color: 'w' | 'b') => {
+        socketRef.current?.emit('claim-seat', { color });
+    }, []);
+
+    const leaveSeat = useCallback(() => {
+        socketRef.current?.emit('leave-seat');
     }, []);
 
     const getRooms = useCallback(() => {
@@ -190,15 +169,12 @@ export default function useSocket() {
         onMoveReceivedRef.current = callback;
     }, []);
 
-    const onOpponentJoined = useCallback((callback: () => void) => {
-        onOpponentJoinedRef.current = callback;
-    }, []);
-
-    const onOpponentLeft = useCallback((callback: () => void) => {
-        onOpponentLeftRef.current = callback;
+    const onResetGame = useCallback((callback: () => void) => {
+        onResetGameRef.current = callback;
     }, []);
 
     return {
+        socketId,
         isConnected,
         roomData,
         rooms,
@@ -207,11 +183,12 @@ export default function useSocket() {
         disconnect,
         createRoom,
         joinRoom,
+        claimSeat,
+        leaveSeat,
         getRooms,
         sendMove,
         leaveRoom,
         onMoveReceived,
-        onOpponentJoined,
-        onOpponentLeft,
+        onResetGame,
     };
 }
