@@ -78,8 +78,6 @@ export default function ChessGame({
         );
     }
 
-    console.log(roomData, isSpectator);
-
     // Determine if current turn is AI
     const isAiTurn = useCallback(() => {
         const currentTurn = gameState.turn === 'w' ? 'white' : 'black';
