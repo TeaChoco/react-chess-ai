@@ -13,36 +13,37 @@ export interface GameState {
     history: string[];
 }
 
+const getGameState = (chessInstance: Chess): GameState => ({
+    fen: chessInstance.fen(),
+    turn: chessInstance.turn(),
+    isCheck: chessInstance.isCheck(),
+    isCheckmate: chessInstance.isCheckmate(),
+    isStalemate: chessInstance.isStalemate(),
+    isDraw: chessInstance.isDraw(),
+    isGameOver: chessInstance.isGameOver(),
+    history: chessInstance.history(),
+});
+
 export default function useChess() {
     const [game, setGame] = useState(new Chess());
     const [gameState, setGameState] = useState<GameState>(getGameState(game));
 
-    function getGameState(chessInstance: Chess): GameState {
-        return {
-            fen: chessInstance.fen(),
-            turn: chessInstance.turn(),
-            isCheck: chessInstance.isCheck(),
-            isCheckmate: chessInstance.isCheckmate(),
-            isStalemate: chessInstance.isStalemate(),
-            isDraw: chessInstance.isDraw(),
-            isGameOver: chessInstance.isGameOver(),
-            history: chessInstance.history(),
-        };
-    }
+    const updateGame = useCallback((newGame: Chess) => {
+        setGame(newGame);
+        setGameState(getGameState(newGame));
+    }, []);
 
     const makeMove = useCallback(
         (from: Square, to: Square, promotion?: string) => {
-            const gameCopy = new Chess(game.fen());
             try {
-                const move = gameCopy.move({
+                const move = game.move({
                     from,
                     to,
                     promotion: promotion || 'q',
                 });
 
                 if (move) {
-                    setGame(gameCopy);
-                    setGameState(getGameState(gameCopy));
+                    updateGame(game);
                     return true;
                 }
             } catch {
@@ -50,7 +51,7 @@ export default function useChess() {
             }
             return false;
         },
-        [game],
+        [game, updateGame],
     );
 
     const makeMoveFromUci = useCallback(
@@ -73,17 +74,14 @@ export default function useChess() {
 
     const resetGame = useCallback(() => {
         const newGame = new Chess();
-        setGame(newGame);
-        setGameState(getGameState(newGame));
-    }, []);
+        updateGame(newGame);
+    }, [updateGame]);
 
     const undoMove = useCallback(() => {
-        const gameCopy = new Chess(game.fen());
-        gameCopy.undo();
-        gameCopy.undo();
-        setGame(gameCopy);
-        setGameState(getGameState(gameCopy));
-    }, [game]);
+        game.undo();
+        game.undo();
+        updateGame(game);
+    }, [game, updateGame]);
 
     return {
         game,

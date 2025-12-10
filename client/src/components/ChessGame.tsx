@@ -1,13 +1,18 @@
 // Path: "client/src/components/ChessGame.tsx"
-import type { PieceDropHandlerArgs, SquareHandlerArgs } from 'react-chessboard';
-import { Chessboard } from 'react-chessboard';
+import ThemeToggle from './ThemeToggle';
 import useChess from '../hooks/useChess';
+import { Chessboard } from 'react-chessboard';
+import type { GameConfig } from '../types/game';
+import useStockfish from '../hooks/useStockfish';
 import { useCallback, useEffect, useState } from 'react';
-import useStockfish, { type Difficulty } from '../hooks/useStockfish';
+import type { PieceDropHandlerArgs, SquareHandlerArgs } from 'react-chessboard';
 
-type GameMode = 'ai' | 'two-player';
+interface ChessGameProps {
+    config: GameConfig;
+    socket?: ReturnType<typeof import('../hooks/useSocket').default>;
+}
 
-export default function ChessGame() {
+export default function ChessGame({ config, socket }: ChessGameProps) {
     const {
         gameState,
         makeMove,
@@ -16,58 +21,96 @@ export default function ChessGame() {
         resetGame,
         undoMove,
     } = useChess();
-    const { isReady, isThinking, difficulty, setDifficulty, getBestMove } =
-        useStockfish();
-    const [gameMode, setGameMode] = useState<GameMode>('ai');
+    const { isReady: aiReady, isThinking, getBestMove } = useStockfish();
+    const [aiConfig, setAiConfig] = useState(
+        config.aiConfig || { skillLevel: 10, depth: 10 },
+    );
     const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>(
-        'white',
+        config.playerColor || 'white',
     );
     const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
     const [optionSquares, setOptionSquares] = useState<
         Record<string, React.CSSProperties>
     >({});
 
-    const isAiMode = gameMode === 'ai';
+    const isOnline = config.mode === 'online';
+    const playerColor = isOnline
+        ? socket?.roomData?.playerColor || 'white'
+        : config.playerColor || 'white';
 
-    // AI makes move when it's black's turn (only in AI mode)
+    // Determine if current turn is AI
+    const isAiTurn = useCallback(() => {
+        const currentTurn = gameState.turn === 'w' ? 'white' : 'black';
+        return currentTurn === 'white'
+            ? config.white === 'ai'
+            : config.black === 'ai';
+    }, [gameState.turn, config.white, config.black]);
+
+    // Determine if player can move
+    const canPlayerMove = useCallback(() => {
+        if (gameState.isGameOver) return false;
+        if (isOnline) {
+            return (
+                (gameState.turn === 'w' && playerColor === 'white') ||
+                (gameState.turn === 'b' && playerColor === 'black')
+            );
+        }
+        return !isAiTurn();
+    }, [gameState.isGameOver, gameState.turn, isOnline, playerColor, isAiTurn]);
+
+    // Update board orientation when player color changes (for online play)
     useEffect(() => {
-        if (
-            isAiMode &&
-            gameState.turn === 'b' &&
-            !gameState.isGameOver &&
-            isReady &&
-            !isThinking
-        ) {
+        if (isOnline && socket?.roomData?.playerColor) {
+            setBoardOrientation(socket.roomData.playerColor);
+        }
+    }, [isOnline, socket?.roomData?.playerColor]);
+
+    // AI makes move
+    useEffect(() => {
+        if (isAiTurn() && !gameState.isGameOver && aiReady && !isThinking) {
             const timer = setTimeout(() => {
-                getBestMove(gameState.fen, (bestMove) =>
+                getBestMove(gameState.fen, aiConfig, (bestMove) =>
                     makeMoveFromUci(bestMove),
                 );
             }, 500);
             return () => clearTimeout(timer);
         }
     }, [
-        isAiMode,
-        gameState.turn,
+        isAiTurn,
         gameState.fen,
         gameState.isGameOver,
-        isReady,
+        aiReady,
         isThinking,
         getBestMove,
         makeMoveFromUci,
     ]);
 
-    const canPlayerMove = useCallback(() => {
-        if (gameState.isGameOver) return false;
-        if (!isAiMode) return true; // Two-player mode: both can move
-        return gameState.turn === 'w'; // AI mode: only white can move
-    }, [gameState.isGameOver, gameState.turn, isAiMode]);
+    // Listen for online moves
+    useEffect(() => {
+        if (!socket || !isOnline) return;
+
+        socket.onMoveReceived((move) => {
+            makeMove(move.from as any, move.to as any, move.promotion);
+        });
+    }, [socket, isOnline, makeMove]);
+
+    const handleMove = useCallback(
+        (from: string, to: string, promotion?: string) => {
+            const success = makeMove(from as any, to as any, promotion);
+            if (success && socket && isOnline) {
+                socket.sendMove({ from, to, promotion });
+            }
+            return success;
+        },
+        [makeMove, socket, isOnline],
+    );
 
     const onSquareClick = useCallback(
         ({ square }: SquareHandlerArgs) => {
             if (!canPlayerMove()) return;
 
             if (selectedSquare) {
-                const success = makeMove(selectedSquare as any, square as any);
+                const success = handleMove(selectedSquare, square);
                 setSelectedSquare(null);
                 setOptionSquares({});
                 if (success) return;
@@ -93,24 +136,22 @@ export default function ChessGame() {
                 setOptionSquares({});
             }
         },
-        [selectedSquare, canPlayerMove, makeMove, getLegalMoves],
+        [selectedSquare, canPlayerMove, handleMove, getLegalMoves],
     );
 
     const onPieceDrop = useCallback(
         ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
             if (!canPlayerMove()) return false;
-            const success = makeMove(sourceSquare as any, targetSquare as any);
+            if (!sourceSquare || !targetSquare) return false;
+            const success = handleMove(sourceSquare, targetSquare);
             setSelectedSquare(null);
             setOptionSquares({});
             return success;
         },
-        [canPlayerMove, makeMove],
+        [canPlayerMove, handleMove],
     );
 
-    const handleModeChange = (mode: GameMode) => {
-        setGameMode(mode);
-        resetGame();
-    };
+    const hasAI = config.white === 'ai' || config.black === 'ai';
 
     const getStatusText = () => {
         if (gameState.isCheckmate)
@@ -123,14 +164,18 @@ export default function ChessGame() {
             return gameState.turn === 'w'
                 ? '⚠️ White is in check!'
                 : '⚠️ Black is in check!';
-        if (isAiMode && isThinking) return '🤔 AI is thinking...';
+        if (isThinking) return '🤔 AI is thinking...';
 
-        if (isAiMode) {
-            return gameState.turn === 'w'
-                ? '⚪ Your turn (White)'
-                : '⚫ AI is playing (Black)';
+        if (isOnline) {
+            const isYourTurn =
+                (gameState.turn === 'w' && playerColor === 'white') ||
+                (gameState.turn === 'b' && playerColor === 'black');
+            return isYourTurn ? '🎯 Your turn' : "⏳ Opponent's turn";
         }
-        return gameState.turn === 'w' ? "⚪ White's turn" : "⚫ Black's turn";
+
+        return gameState.turn === 'w'
+            ? `⚪ ${config.white === 'ai' ? 'AI' : 'White'}'s turn`
+            : `⚫ ${config.black === 'ai' ? 'AI' : 'Black'}'s turn`;
     };
 
     return (
@@ -138,9 +183,48 @@ export default function ChessGame() {
             {/* Left Panel - Game Info */}
             <div className="w-full lg:w-64 order-2 lg:order-1">
                 <div className="bg-card border border-border rounded-2xl p-4 shadow-lg">
-                    <h2 className="text-lg font-bold mb-4 text-foreground">
-                        Game Info
-                    </h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-foreground">
+                            Game Info
+                        </h2>
+                        <ThemeToggle />
+                    </div>
+
+                    {/* Online Room ID */}
+                    {isOnline && socket?.roomData && (
+                        <div className="mb-4 p-4 bg-gradient-to-r from-primary/20 to-purple-500/20 rounded-xl border border-primary/30">
+                            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">
+                                Room ID
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <code className="text-xl font-bold font-mono text-primary tracking-widest">
+                                    {socket.roomData.roomId}
+                                </code>
+                                <button
+                                    onClick={() =>
+                                        navigator.clipboard.writeText(
+                                            socket.roomData?.roomId || '',
+                                        )
+                                    }
+                                    className="p-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 transition-all cursor-pointer"
+                                    title="Copy Room ID"
+                                >
+                                    📋
+                                </button>
+                            </div>
+                            <div className="mt-2 text-xs">
+                                {socket.roomData.opponentConnected ? (
+                                    <span className="text-green-500">
+                                        ✅ Opponent connected
+                                    </span>
+                                ) : (
+                                    <span className="text-yellow-500">
+                                        ⏳ Waiting for opponent...
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Status */}
                     <div
@@ -155,60 +239,50 @@ export default function ChessGame() {
                         {getStatusText()}
                     </div>
 
-                    {/* Game Mode */}
-                    <div className="mb-4">
-                        <label className="text-sm text-muted-foreground mb-2 block">
-                            Game Mode
-                        </label>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => handleModeChange('ai')}
-                                disabled={isThinking}
-                                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                    gameMode === 'ai'
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                } disabled:opacity-50`}
-                            >
-                                🤖 vs AI
-                            </button>
-                            <button
-                                onClick={() => handleModeChange('two-player')}
-                                disabled={isThinking}
-                                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                    gameMode === 'two-player'
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                } disabled:opacity-50`}
-                            >
-                                👥 2 Players
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Difficulty - Only show in AI mode */}
-                    {isAiMode && (
-                        <div className="mb-4">
-                            <label className="text-sm text-muted-foreground mb-2 block">
-                                AI Difficulty
-                            </label>
-                            <div className="flex gap-2">
-                                {(
-                                    ['easy', 'medium', 'hard'] as Difficulty[]
-                                ).map((d) => (
-                                    <button
-                                        key={d}
-                                        onClick={() => setDifficulty(d)}
-                                        disabled={isThinking}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                                            difficulty === d
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted text-muted-foreground hover:bg-secondary'
-                                        } disabled:opacity-50`}
-                                    >
-                                        {d.charAt(0).toUpperCase() + d.slice(1)}
-                                    </button>
-                                ))}
+                    {/* AI Config - Only show if has AI */}
+                    {hasAI && !isOnline && (
+                        <div className="mb-4 space-y-3">
+                            <div>
+                                <label className="text-sm text-muted-foreground mb-1 flex justify-between">
+                                    <span>Skill Level (0-20)</span>
+                                    <span className="font-mono text-primary">
+                                        {aiConfig.skillLevel}
+                                    </span>
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="20"
+                                    value={aiConfig.skillLevel}
+                                    onChange={(e) =>
+                                        setAiConfig((c) => ({
+                                            ...c,
+                                            skillLevel: Number(e.target.value),
+                                        }))
+                                    }
+                                    className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm text-muted-foreground mb-1 flex justify-between">
+                                    <span>Search Depth (1-20)</span>
+                                    <span className="font-mono text-primary">
+                                        {aiConfig.depth}
+                                    </span>
+                                </label>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="20"
+                                    value={aiConfig.depth}
+                                    onChange={(e) =>
+                                        setAiConfig((c) => ({
+                                            ...c,
+                                            depth: Number(e.target.value),
+                                        }))
+                                    }
+                                    className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                                />
                             </div>
                         </div>
                     )}
@@ -217,15 +291,17 @@ export default function ChessGame() {
                     <div className="flex flex-col gap-2">
                         <button
                             onClick={resetGame}
-                            className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer"
+                            disabled={isOnline}
+                            className="w-full py-2.5 px-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
                         >
                             🔄 New Game
                         </button>
                         <button
                             onClick={undoMove}
                             disabled={
-                                gameState.history.length < (isAiMode ? 2 : 1) ||
-                                isThinking
+                                gameState.history.length < 1 ||
+                                isThinking ||
+                                isOnline
                             }
                             className="w-full py-2.5 px-4 bg-secondary text-secondary-foreground rounded-xl font-medium hover:opacity-90 transition-all disabled:opacity-50 cursor-pointer"
                         >
