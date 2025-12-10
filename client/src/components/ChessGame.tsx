@@ -58,10 +58,6 @@ export default function ChessGame({
         : config.playerColor === 'b';
     const isSpectator = isOnline ? roomData?.isSpectator : false;
 
-    // Allow dragging if it's my piece, even if not my turn (for premoves)
-    // But don't allow if spectator
-    const arePiecesDraggable = !isSpectator;
-
     {
         roomData?.spectators.length === 0 ? (
             <div className="text-sm text-muted-foreground italic">
@@ -712,26 +708,6 @@ export default function ChessGame({
 
                     <div className="bg-card border border-border rounded-2xl p-2 md:p-4 shadow-lg flex justify-center items-center">
                         <div className="w-full max-w-[85vw] md:max-w-[600px] lg:max-w-[70vh] aspect-square">
-                            {/* <Chessboard
-                                position={gameState.fen}
-                                onPieceDrop={onPieceDrop}
-                                onSquareClick={onSquareClick}
-                                onMouseOverSquare={onMouseOverSquare}
-                                onMouseOutSquare={onMouseOutSquare}
-                                customSquareStyles={customSquareStyles}
-                                boardOrientation={toColor(boardOrientation)}
-                                arePiecesDraggable={arePiecesDraggable}
-                                customBoardStyle={{
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-                                }}
-                                customDarkSquareStyle={{
-                                    backgroundColor: 'gray',
-                                }}
-                                customLightSquareStyle={{
-                                    backgroundColor: 'white',
-                                }}
-                            /> */}
                             <Chessboard
                                 options={{
                                     position: gameState.fen,
