@@ -1,0 +1,20 @@
+# -Path: "react-chess-ai/render.yaml"
+services:
+    - type: web
+      name: react-chess-ai-server
+      runtime: node
+      region: singapore
+      rootDir: server
+      buildCommand: npm install && npm run build
+      startCommand: node dist/main
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: NODE_OPTIONS
+            value: --max-old-space-size=512
+          - key: PORT
+            fromGroup: render-platform # Render จะกำหนด PORT อัตโนมัติ
+          - key: CLIENT_URL
+            value: https://teachoco.github.io/react-chess-ai/
+      healthCheckPath: /health
+      autoDeploy: true

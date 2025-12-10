@@ -1,9 +1,9 @@
 import ThemeToggle from './ThemeToggle';
 import { Chessboard } from 'react-chessboard';
 import type { Color, Square } from 'chess.js';
-import type { AIConfig, GameConfig } from '../types/game';
 import useStockfish from '../hooks/useStockfish';
 import useChess, { toColor } from '../hooks/useChess';
+import type { AIConfig, GameConfig } from '../types/game';
 import useSocket, { type RoomData } from '../hooks/useSocket';
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import type { PieceDropHandlerArgs, SquareHandlerArgs } from 'react-chessboard';
