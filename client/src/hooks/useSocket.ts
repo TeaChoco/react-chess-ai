@@ -40,8 +40,7 @@ export interface MoveData {
 export type UseSocket = ReturnType<typeof useSocket>;
 
 // const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
-const SERVER_URL =
-    import.meta.env.VITE_SERVER_URL || 'https://react-chess-ai.onrender.com';
+const SERVER_URL = 'https://react-chess-ai.onrender.com';
 
 export default function useSocket() {
     const socketRef = useRef<Socket | null>(null);
