@@ -1,7 +1,7 @@
 import ThemeToggle from './ThemeToggle';
 import { Chessboard } from 'react-chessboard';
 import type { Color, Square } from 'chess.js';
-import type { GameConfig } from '../types/game';
+import type { AIConfig, GameConfig } from '../types/game';
 import useStockfish from '../hooks/useStockfish';
 import useChess, { toColor } from '../hooks/useChess';
 import useSocket, { type RoomData } from '../hooks/useSocket';
@@ -31,7 +31,7 @@ export default function ChessGame({
         undoMove,
     } = useChess();
     const { isReady: aiReady, isThinking, getBestMove } = useStockfish();
-    const [aiConfig, setAiConfig] = useState(
+    const [aiConfig, setAiConfig] = useState<AIConfig>(
         config.aiConfig || { skillLevel: 10, depth: 10 },
     );
     const [boardOrientation, setBoardOrientation] = useState<Color>(

@@ -2,15 +2,11 @@
 import type { AIConfig } from '../types/game';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-//   easy: { depth: 1, skillLevel: 0 },
-//     medium: { depth: 3, skillLevel: 5 },
-//     hard: { depth: 8, skillLevel: 12 },
-
 export default function useStockfish() {
-    const workerRef = useRef<Worker | null>(null);
+    const workerRef = useRef<Worker>(null);
     const [isReady, setIsReady] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
-    const onBestMoveRef = useRef<((move: string) => void) | null>(null);
+    const onBestMoveRef = useRef<(move: string) => void>(null);
 
     useEffect(() => {
         const worker = new Worker(

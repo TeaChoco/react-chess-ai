@@ -110,7 +110,7 @@ export default function HomePage() {
                     <div>
                         <h1 className="text-4xl lg:text-6xl font-black text-foreground tracking-tight mb-4">
                             Master the <br className="hidden lg:block" />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600">
+                            <span className="text-transparent bg-clip-text bg-linear-to-r from-primary to-purple-600">
                                 Game of Kings
                             </span>
                         </h1>
@@ -250,6 +250,23 @@ export default function HomePage() {
                                         Higher skill levels increase Stockfish
                                         depth and calculation time.
                                     </p>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="20"
+                                        value={aiConfig.depth}
+                                        onChange={(e) =>
+                                            setAiConfig((c) => ({
+                                                ...c,
+                                                depth: Number(e.target.value),
+                                            }))
+                                        }
+                                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Higher skill levels increase Stockfish
+                                        depth and calculation time.
+                                    </p>
                                 </div>
                             )}
 
@@ -290,7 +307,7 @@ export default function HomePage() {
                                     </span>
                                 </button>
                                 <div className="relative group">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
+                                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
                                     <button
                                         onClick={() => setIsPrivate(!isPrivate)}
                                         className={`w-full h-full p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all ${
